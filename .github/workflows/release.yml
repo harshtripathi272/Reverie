@@ -55,12 +55,13 @@ jobs:
       - name: Install build tools
         run: pip install --upgrade build wheel
 
-      - name: Build all four wheels
+      - name: Build all five wheels
         run: |
           python -m build packages/schema-py
           python -m build packages/adapter-openai
           python -m build apps/api
           python -m build cli
+          python -m build meta
 
       - name: Collect wheels
         run: |
@@ -69,6 +70,7 @@ jobs:
           cp packages/adapter-openai/dist/* dist-all/
           cp apps/api/dist/* dist-all/
           cp cli/dist/* dist-all/
+          cp meta/dist/* dist-all/
           ls -la dist-all/
 
       - uses: actions/upload-artifact@v4
@@ -219,8 +221,7 @@ jobs:
           files: release/*
           generate_release_notes: true
 
-      # Uncomment when PyPI trusted publisher is configured for this repo.
-      # - name: Publish wheels to PyPI
-      #   uses: pypa/gh-action-pypi-publish@release/v1
-      #   with:
-      #     packages-dir: artifacts/wheels
+      - name: Publish wheels to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: artifacts/wheels

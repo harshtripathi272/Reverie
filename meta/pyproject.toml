@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "reverie-obs"
+version = "0.1.0"
+description = "Cognitive observability, replay, and comparative debugging for autonomous AI agents."
+readme = "../README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Harsh Tripathi", email = "harshtripathi272@gmail.com" }]
+keywords = ["ai", "agents", "observability", "debugging", "cognitive", "replay", "3d"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Debuggers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "reverie-schema>=0.1.0",
+    "reverie-adapter-openai>=0.1.0",
+    "reverie-api>=0.1.0",
+    "reverie-cli>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/harshtripathi272/Reverie"
+Repository = "https://github.com/harshtripathi272/Reverie"
+Issues = "https://github.com/harshtripathi272/Reverie/issues"
+Documentation = "https://github.com/harshtripathi272/Reverie#readme"
+
+[project.scripts]
+reverie = "reverie_cli.main:cli"
+
+[tool.hatch.build.targets.wheel]
+# This is a meta-package — no source code, just dependencies.
+packages = []

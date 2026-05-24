@@ -124,12 +124,12 @@ backend, adapter, CLI, and the 3D explorer — into one file. ~30 MB.
 **2. PyPI install (recommended for Python users)**
 
 ```bash
-pipx install reverie
+pipx install reverie-obs
 reverie start
 ```
 
 The `pipx` install gives you `reverie` on your PATH, with the 3D
-explorer bundled in (no Node toolchain needed). Use `pip install reverie`
+explorer bundled in (no Node toolchain needed). Use `pip install reverie-obs`
 if you'd rather install into your project's venv.
 
 **3. From source (for development)**
