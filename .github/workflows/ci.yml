@@ -28,7 +28,9 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           version: "latest"
-          enable-cache: true
+          # No uv.lock in this repo (uv is used for venv mgmt only),
+          # so caching can't key on a lockfile and would just warn.
+          enable-cache: false
 
       - name: Create venv and install packages
         run: |
@@ -51,10 +53,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The repo's package.json declares `packageManager: pnpm@<x>` so the
+      # action picks the version up automatically — no `version:` here.
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -71,7 +73,7 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           version: "latest"
-          enable-cache: true
+          enable-cache: false
 
       - name: Generate cross-language fixtures
         run: |
@@ -97,8 +99,6 @@ jobs:
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - name: Set up Node
         uses: actions/setup-node@v4

@@ -12,19 +12,32 @@ import type { GraphNode, ZoomLevel } from "@/lib/types";
 /**
  * One glowing orb.
  *
- * Visual structure (kept deliberately simple to avoid the "fuzz pile-up" of
- * stacking many transparent layers):
+ * Visual structure
+ * ----------------
  *
- *   1. Body — fully opaque, high-segment-count sphere. This gives the orb a
- *      clean, crisp silhouette regardless of how aggressive the bloom is.
- *      The body's emissive material drives the bloom highlights.
+ *   1. **Body** — fully opaque sphere. Crisp silhouette regardless of bloom.
+ *      Carries a low emissive so the orb has presence without smearing.
  *
- *   2. Halo — a slightly larger sphere (×1.18) with a Fresnel rim shader.
- *      Only the silhouette rim is visible.
+ *   2. **Halo** — slightly larger sphere with a Fresnel-rim shader, kept
+ *      *subtle by default*. When the orb is hovered or selected, the halo
+ *      brightens substantially — that's the "active highlight" cue.
  *
- *   3. Selection ring — torus, only when ``selected``.
+ *   3. **Selection ring** — torus, only when ``selected``. Hard, opaque,
+ *      tells you *this is the one I clicked* at a glance.
  *
- *   4. Label — DOM <Html> floating above the orb when visibility rules say so.
+ *   4. **Hover ring** — softer torus on hover. Gives an affordance before
+ *      the user commits to clicking.
+ *
+ *   5. **Label** — DOM <Html> floating above; visibility computed by zoom
+ *      level + interaction state.
+ *
+ * Drag-to-move
+ * ------------
+ *
+ * The Orb itself is just visuals. Pointer events bubble up to a dedicated
+ * <DraggableOrbs> wrapper in scene.tsx that tracks pointer-down → drag →
+ * pointer-up and writes the new position back to the layout map. This
+ * separation keeps the visual code stateless about input mode.
  */
 
 interface OrbProps {
@@ -32,7 +45,7 @@ interface OrbProps {
   position: THREE.Vector3;
   selected?: boolean;
   zoomLevel: ZoomLevel;
-  onClick?: (id: string) => void;
+  onPointerDownNode?: (id: string, event: any) => void;
 }
 
 const HALO_VERTEX_SHADER = /* glsl */ `
@@ -59,10 +72,13 @@ const HALO_FRAGMENT_SHADER = /* glsl */ `
 
   void main() {
     float fresnel = 1.0 - max(dot(vNormal, vViewDir), 0.0);
-    float rim = pow(fresnel, 4.0);
+    // Sharper rim, narrower band — keeps the halo *suggestive* not loud.
+    float rim = pow(fresnel, 5.0);
     float pulse = 1.0 + uPulse * 0.30 * sin(uTime * 2.4);
     float alpha = rim * uIntensity * pulse;
-    vec3 col = uColor * (0.9 + rim * 1.6);
+    // Don't push the rim color past the source color — that's what created
+    // the over-saturated bloom in earlier versions.
+    vec3 col = uColor * (0.7 + rim * 0.6);
     gl_FragColor = vec4(col, alpha);
   }
 `;
@@ -72,7 +88,7 @@ export function Orb({
   position,
   selected = false,
   zoomLevel,
-  onClick,
+  onPointerDownNode,
 }: OrbProps) {
   const visual = visualFor(node.type);
   const baseRadius = visual.radius;
@@ -82,20 +98,30 @@ export function Orb({
   // Pulse strength: failed orbs breathe most, then critical-path, then anomalies.
   const pulse = useMemo(() => {
     if (node.type.endsWith(".failed")) return 1.0;
-    if (node.onCriticalPath) return 0.6;
-    if (node.anomalies.length > 0) return 0.4;
+    if (node.onCriticalPath) return 0.55;
+    if (node.anomalies.length > 0) return 0.35;
     return 0.0;
   }, [node.type, node.onCriticalPath, node.anomalies.length]);
+
+  // Active highlight: hover OR selection brightens the halo.
+  // Base intensity is intentionally LOW (0.4×) so default scenes look
+  // polished and quiet. Active state pops to ~1.5× — enough to draw the
+  // eye without blowing the bloom out.
+  const active = hovered || selected;
+  const haloIntensity = visual.glow * (selected ? 1.5 : hovered ? 1.0 : 0.4);
 
   // Halo shader uniforms.
   const haloUniforms = useMemo(
     () => ({
       uColor: { value: visual.color.clone() },
-      uIntensity: { value: visual.glow * (selected ? 1.55 : 1.0) },
+      uIntensity: { value: haloIntensity },
       uTime: { value: 0 },
       uPulse: { value: pulse },
     }),
-    [visual.color, visual.glow, selected, pulse],
+    // ``haloIntensity`` is intentionally NOT in deps — we mutate the
+    // uniform directly in useFrame for smooth lerping.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [visual.color, pulse],
   );
 
   const haloMaterial = useMemo(
@@ -113,44 +139,56 @@ export function Orb({
     [haloUniforms],
   );
 
+  // Body — opaque, low emissive. Bloom handles outward propagation.
   const bodyMaterial = useMemo(() => {
     const baseColor = visual.color;
     return new THREE.MeshStandardMaterial({
       color: baseColor,
       emissive: baseColor,
-      emissiveIntensity: visual.glow * 1.4,
-      roughness: 0.42,
+      // Much lower emissive intensity — was 1.4, now 0.55. Stops the orb
+      // from bleeding into a halo cloud.
+      emissiveIntensity: visual.glow * 0.55,
+      roughness: 0.45,
       metalness: 0.0,
       transparent: false,
-      toneMapped: false,
+      // Body stays tone-mapped now so its color doesn't exceed 1.0 and
+      // contribute extra bloom. Halo is the only thing that pushes past 1.0.
+      toneMapped: true,
     });
   }, [visual.color, visual.glow]);
 
-  // Animate selection / hover scale + halo pulse.
+  // Smooth lerp scale + halo intensity in useFrame so transitions feel buttery.
   const groupRef = useRef<THREE.Group>(null);
-  const targetScale = selected ? 1.16 : hovered ? 1.08 : 1.0;
+  const targetScale = selected ? 1.16 : hovered ? 1.06 : 1.0;
   useFrame((state, delta) => {
     if (!groupRef.current) return;
     const cur = groupRef.current.scale.x;
-    const next = THREE.MathUtils.lerp(cur, targetScale, 1 - Math.exp(-delta * 8));
+    const next = THREE.MathUtils.lerp(
+      cur,
+      targetScale,
+      1 - Math.exp(-delta * 8),
+    );
     groupRef.current.scale.setScalar(next);
     haloUniforms.uTime.value = state.clock.elapsedTime;
+    // Lerp halo brightness toward the active target.
+    const cur_int = haloUniforms.uIntensity.value as number;
+    haloUniforms.uIntensity.value = THREE.MathUtils.lerp(
+      cur_int,
+      haloIntensity,
+      1 - Math.exp(-delta * 6),
+    );
   });
 
   // Geometry resolution.
   const segments = baseRadius >= 7 ? 64 : baseRadius >= 5 ? 48 : 36;
 
-  // Label visibility rules — see ``OrbLabel`` and the explorer header.
-  // Goals + subagents + failures are always labelled; everything else only
-  // when hovered/selected at L3+.
+  // Label visibility.
   const labelVisible = computeLabelVisibility({
     node,
     zoomLevel,
     hovered,
     selected,
   });
-
-  // Lift the label slightly above the orb so the halo doesn't push through it.
   const labelOffset = radius * 1.7;
 
   return (
@@ -159,21 +197,21 @@ export function Orb({
       position={position}
       onPointerDown={(e) => {
         e.stopPropagation();
-        onClick?.(node.id);
+        onPointerDownNode?.(node.id, e);
       }}
       onPointerOver={(e) => {
         e.stopPropagation();
         setHovered(true);
-        document.body.style.cursor = "pointer";
+        document.body.style.cursor = "grab";
       }}
       onPointerOut={() => {
         setHovered(false);
         document.body.style.cursor = "";
       }}
     >
-      {/* Halo first — renderOrder lower so the body draws on top. */}
+      {/* Halo — soft default, brightens on hover/selection. */}
       <Sphere
-        args={[radius * 1.18, segments, segments]}
+        args={[radius * 1.15, segments, segments]}
         material={haloMaterial}
         renderOrder={0}
       />
@@ -185,10 +223,24 @@ export function Orb({
         renderOrder={1}
       />
 
-      {/* Selection ring. */}
+      {/* Hover ring — affordance before click. Doesn't glow, just a thin
+          line, so it reads as "interactive thing" not "important thing". */}
+      {hovered && !selected && (
+        <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={2}>
+          <torusGeometry args={[radius * 1.4, 0.08, 12, 64]} />
+          <meshBasicMaterial
+            color="#ffffff"
+            transparent
+            opacity={0.5}
+            toneMapped={false}
+          />
+        </mesh>
+      )}
+
+      {/* Selection ring — solid + branded color. */}
       {selected && (
         <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={2}>
-          <torusGeometry args={[radius * 1.85, 0.15, 16, 96]} />
+          <torusGeometry args={[radius * 1.7, 0.14, 16, 96]} />
           <meshBasicMaterial
             color={visual.hex}
             transparent
@@ -225,9 +277,7 @@ function computeLabelVisibility({
   selected: boolean;
 }): boolean {
   if (hovered || selected) return true;
-  // L1 / L2 — few orbs, label them all.
   if (zoomLevel <= 2) return true;
-  // L3 — only label "anchor" nodes. Tools/memory/etc. are too dense.
   if (zoomLevel === 3) {
     if (node.type.startsWith("goal.")) return true;
     if (node.type.startsWith("subagent.")) return true;
@@ -235,6 +285,5 @@ function computeLabelVisibility({
     if (node.onCriticalPath) return true;
     return false;
   }
-  // L4 — raw view; only label on hover/selection (already returned above).
   return false;
 }

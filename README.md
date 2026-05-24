@@ -6,7 +6,7 @@
 
 *Chrome DevTools for AI agents. OpenTelemetry for agent cognition.*
 
-[![tests](https://img.shields.io/badge/tests-401%20green-22c55e.svg)](#testing)
+[![tests](https://img.shields.io/badge/tests-409%20green-22c55e.svg)](#testing)
 [![python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org)
 [![node](https://img.shields.io/badge/node-20%2B-339933.svg)](https://nodejs.org)
 [![license](https://img.shields.io/badge/license-MIT-purple.svg)](LICENSE)
@@ -58,11 +58,20 @@ make install
 This creates a `.venv`, installs all four Python packages in editable mode,
 and pulls the JS workspace.
 
-### Run the backend
+### Boot the whole stack with one command
 
 ```bash
-make dev   # starts uvicorn on http://127.0.0.1:8000
+reverie start
 ```
+
+This spawns the FastAPI backend, waits for it to become healthy, spawns the
+Next.js explorer, and opens your browser at `http://localhost:3000`. Ctrl+C
+once tears both processes down cleanly. Useful flags:
+
+- `--no-web` — start only the API.
+- `--no-browser` — don't auto-open.
+- `--prod` — run the web app via `next start` (after `pnpm -C apps/web build`).
+- `--backend-port N` / `--web-port N` — non-default ports.
 
 ### Instrument an agent and produce a recorded run
 
@@ -73,13 +82,16 @@ reverie run python examples/complex_agent.py
 Your agent runs normally; Reverie hooks the OpenAI Agents SDK tracing system
 and streams every event to the backend. No code changes needed.
 
-### Open the 3D explorer
+Click any run in the 3D explorer to enter it. Click any orb for its full
+event payload. Drag orbs around like nodes in Obsidian — positions are local
+to your view and don't mutate the recorded data.
+
+### Manual control (if you'd rather)
 
 ```bash
-pnpm -C apps/web dev   # http://localhost:3000
+make dev               # backend on http://127.0.0.1:8000
+pnpm -C apps/web dev   # web on http://localhost:3000
 ```
-
-Click any run to enter the explorer. Click any orb for its full event payload.
 
 ## What's in the box
 
@@ -93,12 +105,18 @@ Click any run to enter the explorer. Click any orb for its full event payload.
 | **Salience scorer** | Per-node 0.0–1.0 importance score; nodes < 0.10 hidden by default |
 | **AI summary service** | Optional Claude-backed natural language explanations, DB-cached so the same region never gets summarized twice |
 | **Comparative debugger** | Needleman-Wunsch alignment over event semantics, structured diff across all seven SRS dimensions, fault tree, AI narrative |
-| **CLI** | 11 subcommands. Most ship `--json` for scripting |
+| **CLI** | 12 subcommands. Most ship `--json` for scripting |
 | **3D renderer** | Next.js 15 + React Three Fiber 9 with custom Fresnel-rim shaders, ACES tone mapping, selective bloom |
 
 ## CLI reference
 
 ```text
+reverie start                        Start backend + web + open browser.
+       --backend-port N              Backend port (default 8000).
+       --web-port N                  Web port (default 3000).
+       --no-web                      Skip the web app.
+       --no-browser                  Don't auto-open the browser.
+       --dev / --prod                Use `next dev` (default) or `next start`.
 reverie run <cmd...>                 Run any command with auto-instrumentation.
 reverie status                       Ping the backend and show its health.
 reverie runs list                    List recent runs (most recent first).

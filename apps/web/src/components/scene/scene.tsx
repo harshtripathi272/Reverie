@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import {
   Bloom,
@@ -23,16 +23,22 @@ interface SceneProps {
   layout: LaidOutGraph | null;
 }
 
+/**
+ * Module-level shared ref so `SceneContent` can disable OrbitControls
+ * during a drag without prop-drilling through three layers. We use a ref
+ * (not state) so toggling it doesn't trigger a re-render of the whole
+ * tree mid-drag.
+ */
+const orbitEnabledRef: { current: boolean } = { current: true };
+
 export function Scene({ bundle, layout }: SceneProps) {
   return (
     <Canvas
       gl={{
         antialias: true,
         powerPreference: "high-performance",
-        toneMapping: THREE.NoToneMapping, // we use the post-fx pass instead
+        toneMapping: THREE.NoToneMapping,
         outputColorSpace: THREE.SRGBColorSpace,
-        // Prefer a stencil buffer disabled — we don't use it and it costs
-        // memory on high-DPI displays.
         stencil: false,
         depth: true,
       }}
@@ -42,20 +48,14 @@ export function Scene({ bundle, layout }: SceneProps) {
         far: 5000,
         fov: 50,
       }}
-      // Tell R3F to clear to pure black.
       onCreated={({ gl }) => {
         gl.setClearColor(0x000000, 1);
       }}
-      // Cap DPR at 2 — diminishing returns above 2 and big perf cost on 3x
-      // Retina displays. Floor at 1.5 so we never look pixelated.
       dpr={[1.5, 2]}
       className="absolute inset-0"
     >
-      {/* Subtle ambient + a single directional rim light. With the body now
-          using MeshStandardMaterial, a touch of directional light gives the
-          spheres a proper round shading gradient instead of looking flat. */}
-      <ambientLight intensity={0.18} />
-      <directionalLight position={[200, 300, 200]} intensity={0.5} />
+      <ambientLight intensity={0.20} />
+      <directionalLight position={[200, 300, 200]} intensity={0.55} />
 
       <fog attach="fog" args={["#020818", 600, 1800]} />
 
@@ -67,20 +67,13 @@ export function Scene({ bundle, layout }: SceneProps) {
 
       <CameraRig hasContent={!!bundle} layout={layout} />
 
-      {/*
-        Post-processing pipeline:
-          - Bloom is tuned for *tight* glow rather than a soft haze. Higher
-            threshold + smaller radius keeps the highlight close to the orb,
-            which makes the orbs themselves read as crisp circles.
-          - ACES filmic tone mapping for cinematic colors.
-       */}
       <EffectComposer multisampling={4}>
         <Bloom
-          intensity={0.95}
-          luminanceThreshold={0.55}
-          luminanceSmoothing={0.20}
+          intensity={0.45}
+          luminanceThreshold={0.85}
+          luminanceSmoothing={0.15}
           mipmapBlur
-          radius={0.45}
+          radius={0.35}
         />
         <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
       </EffectComposer>
@@ -89,8 +82,22 @@ export function Scene({ bundle, layout }: SceneProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Content — orbs + edges. Mounted only when we have data.
+// Content — orbs + edges. Implements drag-to-move.
 // ---------------------------------------------------------------------------
+
+interface DragState {
+  nodeId: string;
+  // World-space plane the drag is happening on.
+  plane: THREE.Plane;
+  // Offset between pointer hit point and orb center on the drag plane —
+  // so the orb doesn't snap to wherever the cursor lands first.
+  offset: THREE.Vector3;
+  // Distance the pointer has moved since pointer-down — used to distinguish
+  // a click from a drag.
+  travelled: number;
+}
+
+const CLICK_VS_DRAG_THRESHOLD = 4; // world units
 
 function SceneContent({
   bundle,
@@ -102,18 +109,143 @@ function SceneContent({
   const selectedNodeId = useExplorerStore((s) => s.selectedNodeId);
   const setSelectedNodeId = useExplorerStore((s) => s.setSelectedNodeId);
   const zoomLevel = useExplorerStore((s) => s.zoomLevel);
+  const { camera, gl } = useThree();
+
+  // Local mutable position map. Seeded from the layout the first time we
+  // see it; re-seeded only when the underlying layout reference changes
+  // (i.e. a fresh graph fetch). Drag updates write here.
+  const [positions, setPositions] = useState<Map<string, THREE.Vector3>>(
+    () => clonePositionMap(layout.positions),
+  );
+  useEffect(() => {
+    setPositions(clonePositionMap(layout.positions));
+  }, [layout]);
+
+  const dragRef = useRef<DragState | null>(null);
 
   const nodeById = useMemo(
     () => new Map(bundle.nodes.map((n) => [n.id, n])),
     [bundle],
   );
 
+  // ---------------------------------------------------------------- drag
+
+  const onPointerDownNode = (id: string, e: ThreeEvent<PointerEvent>) => {
+    const orb = positions.get(id);
+    if (!orb) return;
+
+    // Build the drag plane: perpendicular to the camera, passing through
+    // the orb. Pointer movement gets projected onto this plane so the orb
+    // moves in the camera's "screen plane" no matter where the camera is.
+    const cameraDir = new THREE.Vector3();
+    camera.getWorldDirection(cameraDir);
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
+      cameraDir.negate(), // plane normal points toward camera
+      orb.clone(),
+    );
+
+    // Where on that plane was the initial pointer? Used as our offset
+    // anchor so the orb tracks the cursor's relative motion, not absolute.
+    const hitPoint = e.point.clone();
+    const offset = orb.clone().sub(hitPoint);
+
+    dragRef.current = {
+      nodeId: id,
+      plane,
+      offset,
+      travelled: 0,
+    };
+
+    // Capture the pointer so we keep getting events when the cursor
+    // leaves the orb during fast drags.
+    (e.target as Element | null)?.setPointerCapture?.(e.pointerId);
+
+    // Disable orbit controls while dragging — otherwise the camera would
+    // pan/orbit at the same time.
+    orbitEnabledRef.current = false;
+
+    document.body.style.cursor = "grabbing";
+  };
+
+  // Global pointer-move listener attached to the canvas DOM element. Using
+  // the canvas ensures we still get events when the pointer leaves the
+  // orb during a drag.
+  useEffect(() => {
+    const canvas = gl.domElement;
+
+    const onMove = (ev: PointerEvent) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+
+      // Convert pointer to NDC.
+      const rect = canvas.getBoundingClientRect();
+      const ndc = new THREE.Vector2(
+        ((ev.clientX - rect.left) / rect.width) * 2 - 1,
+        -((ev.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(ndc, camera);
+
+      // Intersect the ray with the drag plane to get the new world-space
+      // pointer position.
+      const target = new THREE.Vector3();
+      const hit = ray.ray.intersectPlane(drag.plane, target);
+      if (!hit) return;
+
+      const newPos = target.add(drag.offset);
+      setPositions((prev) => {
+        const next = new Map(prev);
+        const old = next.get(drag.nodeId);
+        if (old) {
+          drag.travelled += old.distanceTo(newPos);
+        }
+        next.set(drag.nodeId, newPos);
+        return next;
+      });
+    };
+
+    const onUp = (ev: PointerEvent) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+
+      // If they barely moved, treat it as a click → toggle selection.
+      if (drag.travelled < CLICK_VS_DRAG_THRESHOLD) {
+        const id = drag.nodeId;
+        // Use the latest store snapshot, not the captured value.
+        const current = useExplorerStore.getState().selectedNodeId;
+        useExplorerStore
+          .getState()
+          .setSelectedNodeId(current === id ? null : id);
+      }
+
+      dragRef.current = null;
+      orbitEnabledRef.current = true;
+      document.body.style.cursor = "";
+      try {
+        (ev.target as Element).releasePointerCapture?.(ev.pointerId);
+      } catch {
+        // Some browsers throw if no capture was held — safe to ignore.
+      }
+    };
+
+    canvas.addEventListener("pointermove", onMove);
+    canvas.addEventListener("pointerup", onUp);
+    canvas.addEventListener("pointercancel", onUp);
+    return () => {
+      canvas.removeEventListener("pointermove", onMove);
+      canvas.removeEventListener("pointerup", onUp);
+      canvas.removeEventListener("pointercancel", onUp);
+    };
+  }, [camera, gl, setSelectedNodeId]);
+
+  // ---------------------------------------------------------------- render
+
   return (
     <group>
       {/* Connections rendered first so orbs draw on top of them. */}
       {bundle.edges.map((e) => {
-        const src = layout.positions.get(e.source);
-        const tgt = layout.positions.get(e.target);
+        const src = positions.get(e.source);
+        const tgt = positions.get(e.target);
         if (!src || !tgt) return null;
         const targetNode = nodeById.get(e.target);
         return (
@@ -129,7 +261,7 @@ function SceneContent({
       })}
 
       {bundle.nodes.map((node) => {
-        const pos = layout.positions.get(node.id);
+        const pos = positions.get(node.id);
         if (!pos) return null;
         return (
           <Orb
@@ -138,9 +270,7 @@ function SceneContent({
             position={pos}
             selected={selectedNodeId === node.id}
             zoomLevel={zoomLevel}
-            onClick={(id) => {
-              setSelectedNodeId(id === selectedNodeId ? null : id);
-            }}
+            onPointerDownNode={onPointerDownNode}
           />
         );
       })}
@@ -148,9 +278,17 @@ function SceneContent({
   );
 }
 
+function clonePositionMap(
+  src: Map<string, THREE.Vector3>,
+): Map<string, THREE.Vector3> {
+  const out = new Map<string, THREE.Vector3>();
+  for (const [k, v] of src) out.set(k, v.clone());
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // CameraRig — damped orbit + auto-frame on first content + reset/frame
-// commands triggered from the HUD.
+// commands triggered from the HUD. Enabled state honors the drag flag.
 // ---------------------------------------------------------------------------
 
 function CameraRig({
@@ -170,7 +308,6 @@ function CameraRig({
   const frameSelectedTick = useExplorerStore((s) => s.frameSelectedTick);
   const selectedNodeId = useExplorerStore((s) => s.selectedNodeId);
 
-  // Helper: compute a flattering camera frame for the whole layout.
   const computeFitFrame = () => {
     if (!layout || layout.nodes.length === 0) return null;
     const box = new THREE.Box3();
@@ -180,7 +317,6 @@ function CameraRig({
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z, 80);
-    // Pull the camera back proportional to the largest dimension.
     const distance = maxDim * 1.6 + 80;
     const pos = new THREE.Vector3(
       center.x + distance * 0.3,
@@ -190,7 +326,6 @@ function CameraRig({
     return { pos, look: center };
   };
 
-  // First frame on layout load.
   useEffect(() => {
     if (!hasContent || framedOnceRef.current) return;
     framedOnceRef.current = true;
@@ -202,7 +337,6 @@ function CameraRig({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasContent, layout]);
 
-  // Reset camera command from the HUD.
   useEffect(() => {
     if (cameraResetTick === 0) return;
     const frame = computeFitFrame();
@@ -213,7 +347,6 @@ function CameraRig({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cameraResetTick]);
 
-  // Frame the selected node — fly camera so it's centered + close.
   useEffect(() => {
     if (frameSelectedTick === 0 || !selectedNodeId || !layout) return;
     const node = layout.nodes.find((n) => n.id === selectedNodeId);
@@ -229,13 +362,13 @@ function CameraRig({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frameSelectedTick]);
 
-  // Smoothly lerp the camera + orbit target toward whatever was requested.
   useFrame((_, delta) => {
     if (!controlsRef.current) return;
+    // Sync orbit-controls enabled state with the drag flag every frame.
+    controlsRef.current.enabled = orbitEnabledRef.current;
     if (targetPosRef.current) {
       const t = 1 - Math.exp(-delta * 3);
       camera.position.lerp(targetPosRef.current, t);
-      // Snap-stop once close enough.
       if (camera.position.distanceTo(targetPosRef.current) < 0.4) {
         camera.position.copy(targetPosRef.current);
         targetPosRef.current = null;
