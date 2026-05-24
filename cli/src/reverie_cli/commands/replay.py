@@ -110,10 +110,10 @@ def replay_command(
     headline = (
         f"[bold]Replaying[/bold] run {run['id']} "
         f"([dim]{len(events)}/{run['totalEvents']} events, "
-        f"goal={run.get('goal') or '—'}[/dim])"
+        f"goal={run.get('goal') or '-'}[/dim])"
     )
     if failure_index is not None:
-        headline += f" — [red]jumping to first failure at index {failure_index}[/red]"
+        headline += f" -- [red]jumping to first failure at index {failure_index}[/red]"
     console.print(headline)
 
     speed_factor = 0.0 if speed == "instant" else 1.0 / float(speed)

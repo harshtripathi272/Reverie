@@ -18,8 +18,13 @@ from reverie_api.broker import EventBroker, get_broker, set_broker
 from reverie_api.config import Settings, load_settings
 from reverie_api.db import Database, get_database, set_database
 from reverie_api.errors import install_exception_handlers
+from reverie_api.graph.engine import (
+    GraphEngine,
+    set_graph_engine,
+)
 from reverie_api.models import HealthResponse
 from reverie_api.routes import events as events_routes
+from reverie_api.routes import graph as graph_routes
 from reverie_api.routes import replay as replay_routes
 from reverie_api.routes import runs as runs_routes
 from reverie_api.routes import stream as stream_routes
@@ -46,15 +51,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await db.connect()
         broker = EventBroker(queue_size=cfg.ws_subscriber_buffer)
         snapshot_engine = SnapshotEngine(db)
+        graph_engine = GraphEngine(db)
 
         set_database(db)
         set_broker(broker)
         set_snapshot_engine(snapshot_engine)
+        set_graph_engine(graph_engine)
 
         # Stash on app.state for tests / introspection.
         app.state.db = db
         app.state.broker = broker
         app.state.snapshot_engine = snapshot_engine
+        app.state.graph_engine = graph_engine
         app.state.settings = cfg
 
         try:
@@ -63,6 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             set_database(None)
             set_broker(None)
             set_snapshot_engine(None)
+            set_graph_engine(None)
             await db.close()
 
     app = FastAPI(
@@ -98,6 +107,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(runs_routes.router)
     app.include_router(events_routes.router)
     app.include_router(replay_routes.router)
+    app.include_router(graph_routes.router)
     app.include_router(stream_routes.router)
 
     return app

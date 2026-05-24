@@ -22,7 +22,7 @@ def make_console() -> Console:
 
 def format_timestamp_ms(value: int | None) -> str:
     if value is None:
-        return "—"
+        return "-"
     try:
         dt = datetime.fromtimestamp(value / 1000.0, tz=timezone.utc)
     except (OSError, ValueError, OverflowError):
@@ -32,7 +32,7 @@ def format_timestamp_ms(value: int | None) -> str:
 
 def format_duration_ms(value: float | int | None) -> str:
     if value is None:
-        return "—"
+        return "-"
     if value < 1000:
         return f"{value:.1f}ms"
     return f"{value / 1000:.2f}s"
@@ -52,7 +52,7 @@ def runs_table(runs: list[dict[str, Any]]) -> Table:
         table.add_row(
             r["id"][:8] + "…",
             _status_styled(r["status"]),
-            (r.get("goal") or "—")[:60],
+            (r.get("goal") or "-")[:60],
             str(r["totalEvents"]),
             str(r["totalToolCalls"]),
             str(r["totalTokens"]),
