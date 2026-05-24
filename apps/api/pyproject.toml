@@ -39,11 +39,15 @@ reverie-schema = { path = "../../packages/schema-py", editable = true }
 packages = ["src/reverie_api"]
 
 # When the static web app is bundled (via ``python scripts/bundle_web_app.py``),
-# include it in the wheel. ``force-include`` keeps the source tree clean —
-# the directory is gitignored — but the wheel contains it so installs ship
-# with the 3D explorer ready to serve.
-[tool.hatch.build.targets.wheel.force-include]
-"src/reverie_api/_web_static" = "reverie_api/_web_static"
+# include it in the wheel. The directory itself is gitignored so it's only
+# present after a build pipeline runs.
+#
+# We use the ``artifacts`` mechanism instead of ``force-include`` so the build
+# doesn't fail when the directory hasn't been bundled yet (e.g. during CI
+# test runs that build wheels from a fresh checkout).
+artifacts = [
+    "src/reverie_api/_web_static/**",
+]
 
 [tool.hatch.build.targets.sdist]
 include = [

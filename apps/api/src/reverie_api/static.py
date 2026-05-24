@@ -82,9 +82,9 @@ def find_web_static_dir() -> Path | None:
             resources.files("reverie_api").joinpath(_PACKAGED_DIRNAME)
         ) as p:
             packaged = Path(p)
-        if (packaged / "index.html").exists():
+        if packaged.is_dir() and (packaged / "index.html").exists():
             return packaged
-    except (FileNotFoundError, ModuleNotFoundError):
+    except (FileNotFoundError, ModuleNotFoundError, TypeError, OSError):
         pass
 
     # Source-tree fallback (`apps/web/out` next to `apps/api/src`).
