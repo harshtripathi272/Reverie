@@ -47,6 +47,8 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Static-export the web app
+        env:
+          REVERIE_BUILD_MODE: static
         run: pnpm -C apps/web build:static
 
       - name: Bundle web app into API package
@@ -137,6 +139,9 @@ jobs:
           uv pip install --python "$PYBIN" pyinstaller
 
       - name: Static-export the web app
+        shell: bash
+        env:
+          REVERIE_BUILD_MODE: static
         run: pnpm -C apps/web build:static
 
       - name: Bundle web app into API package

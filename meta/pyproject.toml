@@ -39,4 +39,5 @@ reverie = "reverie_cli.main:cli"
 
 [tool.hatch.build.targets.wheel]
 # This is a meta-package — no source code, just dependencies.
-packages = []
+# We need an empty package directory for hatchling to be happy.
+packages = ["src/reverie_meta"]

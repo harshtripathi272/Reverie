@@ -81,7 +81,7 @@ smoke:
 
 # Build the 3D explorer as a static export, ready to be served by the API.
 build-web:
-	$(PNPM) -C apps/web build:static
+	set REVERIE_BUILD_MODE=static&& $(PNPM) -C apps/web build:static
 
 # Bundle the static export into the reverie-api package source tree so the
 # next pip/wheel build picks it up automatically.
