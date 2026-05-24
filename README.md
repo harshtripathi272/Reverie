@@ -736,20 +736,6 @@ bump in both the Python and TypeScript implementations.
 Found a security issue? See [`SECURITY.md`](./SECURITY.md) for
 responsible-disclosure instructions.
 
-## Roadmap
-
-The 21-week plan in [`SRS.md`](./SRS.md) is fully shipped. The current
-focus:
-
-- **More adapters** — LangGraph, CrewAI, AutoGen, MCP, plus a generic
-  Python SDK so anyone can instrument their own framework.
-- **Replay session sync** — multiple users scrubbing the same run
-  together.
-- **Run pinning + retention policies** — prevent valuable failed runs
-  from being garbage collected.
-- **Saved comparisons** — pair-of-runs as first-class entities with
-  shareable URLs.
-- **Run deletion + tagging** from the CLI and UI.
 
 ## License
 
