@@ -32,6 +32,7 @@ install-py:
 	$(UV) venv .venv --python 3.13
 	$(UV) pip install --python $(PY) -e "packages/schema-py[dev]"
 	$(UV) pip install --python $(PY) -e "apps/api[dev]"
+	$(UV) pip install --python $(PY) -e "packages/adapter-openai[dev]"
 
 install-js:
 	$(PNPM) install
