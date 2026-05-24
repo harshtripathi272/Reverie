@@ -28,6 +28,7 @@ from pathlib import Path
 import click
 import httpx
 
+from reverie_cli.app_config import resolve_repo_path
 from reverie_cli.formatting import make_console
 
 
@@ -95,11 +96,13 @@ def start_command(
 
     console = make_console()
 
-    repo_root = repo or _detect_repo_root()
+    repo_root = repo or _detect_repo_root() or resolve_repo_path()
     if repo_root is None:
         console.print(
-            "[red]error:[/red] could not find the Reverie repo root. "
-            "Pass --repo /path/to/reverie or run from inside a checkout."
+            "[red]error:[/red] could not find the Reverie repo root.\n"
+            "  Pass --repo /path/to/reverie, set REVERIE_REPO, or run\n"
+            "  [bold]reverie init[/bold] from inside a Reverie checkout to save "
+            "the path globally."
         )
         raise SystemExit(1)
 

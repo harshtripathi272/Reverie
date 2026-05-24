@@ -130,10 +130,64 @@ async def _migration_003_ai_summaries(conn: aiosqlite.Connection) -> None:
     )
 
 
+async def _migration_004_annotations(conn: aiosqlite.Connection) -> None:
+    """Create the ``annotations`` table — user-supplied feedback on nodes.
+
+    An annotation is a sticky note attached to one event in one run, with a
+    semantic ``kind`` (avoid / focus / done / note). The CLI and 3D explorer
+    let the user create these after a run finishes; the next run can fetch
+    them via ``GET /agents/{id}/guidance`` and inject them into the prompt.
+
+    The schema itself stays frozen — annotations are pure sidecar data.
+
+    Columns
+    -------
+    - ``id``         — UUID primary key.
+    - ``run_id``     — the run the annotated event belongs to.
+    - ``node_id``    — the event id (no FK; we want annotations to survive
+      the rare case where an event row gets pruned).
+    - ``kind``       — semantic category: ``avoid`` | ``focus`` | ``done``
+      | ``note``.
+    - ``note``       — optional free-text the user attached.
+    - ``scope``      — ``agent`` (carries forward to future runs of the same
+      agent_id) or ``run`` (one-shot, never affects future runs).
+    - ``agent_id``   — denormalised from runs.agent_id so guidance lookup
+      is a single-table query.
+    - ``tag``        — optional topic label (e.g. "research", "coding") for
+      multi-purpose agents — only annotations whose tag matches the active
+      goal will be pulled into the prompt.
+    - ``created_at`` — millisecond timestamp.
+    """
+
+    await conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS annotations (
+            id          TEXT PRIMARY KEY,
+            run_id      TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+            node_id     TEXT NOT NULL,
+            kind        TEXT NOT NULL
+                CHECK (kind IN ('avoid', 'focus', 'done', 'note')),
+            note        TEXT,
+            scope       TEXT NOT NULL DEFAULT 'agent'
+                CHECK (scope IN ('agent', 'run')),
+            agent_id    TEXT NOT NULL,
+            tag         TEXT,
+            created_at  INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_annotations_run_id   ON annotations(run_id);
+        CREATE INDEX IF NOT EXISTS idx_annotations_agent_id ON annotations(agent_id);
+        CREATE INDEX IF NOT EXISTS idx_annotations_node_id  ON annotations(node_id);
+        CREATE INDEX IF NOT EXISTS idx_annotations_kind     ON annotations(kind);
+        """
+    )
+
+
 MIGRATIONS: list[Migration] = [
     _migration_001_initial_schema,
     _migration_002_run_checkpoints,
     _migration_003_ai_summaries,
+    _migration_004_annotations,
 ]
 
 

@@ -91,9 +91,11 @@ class TestCommandSurface:
 
     def test_no_repo_root_exits_1(self, tmp_path: Path):
         runner = CliRunner()
-        # Force _detect_repo_root() to return None.
+        # Force both auto-detect AND saved-config lookup to return None.
         with patch(
             "reverie_cli.commands.start._detect_repo_root", return_value=None
+        ), patch(
+            "reverie_cli.commands.start.resolve_repo_path", return_value=None
         ):
             result = runner.invoke(start_command, [])
         assert result.exit_code == 1

@@ -10,12 +10,15 @@ from __future__ import annotations
 import click
 
 from reverie_cli import __version__
+from reverie_cli.commands.annotate import annotate_command, annotations_command
 from reverie_cli.commands.compare import compare_command
 from reverie_cli.commands.graph import (
     anomalies_command,
     graph_command,
     zoom_command,
 )
+from reverie_cli.commands.guidance import guidance_command
+from reverie_cli.commands.init import init_command
 from reverie_cli.commands.replay import replay_command
 from reverie_cli.commands.run import run_command
 from reverie_cli.commands.runs import runs_group
@@ -35,6 +38,7 @@ def cli() -> None:
 
 
 # Register commands.
+cli.add_command(init_command)
 cli.add_command(start_command)
 cli.add_command(run_command)
 cli.add_command(status_command)
@@ -46,6 +50,9 @@ cli.add_command(anomalies_command)
 cli.add_command(zoom_command)
 cli.add_command(summary_command)
 cli.add_command(compare_command)
+cli.add_command(annotate_command)
+cli.add_command(annotations_command)
+cli.add_command(guidance_command)
 
 
 def main() -> None:

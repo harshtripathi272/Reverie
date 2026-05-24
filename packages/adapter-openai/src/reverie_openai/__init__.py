@@ -14,6 +14,12 @@ Most users only need ``reverie_openai.auto()``.
 
 from reverie_openai.config import AdapterConfig, load_config
 from reverie_openai.emitter import Emitter
+from reverie_openai.guidance import (
+    apply_guidance_to_agent,
+    apply_guidance_to_instructions,
+    fetch_guidance,
+    is_guidance_enabled,
+)
 from reverie_openai.processor import ReverieTracingProcessor
 from reverie_openai.runtime import auto, shutdown
 
@@ -21,7 +27,11 @@ __all__ = [
     "AdapterConfig",
     "Emitter",
     "ReverieTracingProcessor",
+    "apply_guidance_to_agent",
+    "apply_guidance_to_instructions",
     "auto",
+    "fetch_guidance",
+    "is_guidance_enabled",
     "load_config",
     "shutdown",
 ]

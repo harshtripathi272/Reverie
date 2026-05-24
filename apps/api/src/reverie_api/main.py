@@ -33,6 +33,7 @@ from reverie_api.graph.engine import (
     set_graph_engine,
 )
 from reverie_api.models import HealthResponse
+from reverie_api.routes import annotations as annotations_routes
 from reverie_api.routes import compare as compare_routes
 from reverie_api.routes import events as events_routes
 from reverie_api.routes import graph as graph_routes
@@ -44,6 +45,8 @@ from reverie_api.snapshot.engine import (
     SnapshotEngine,
     set_snapshot_engine,
 )
+
+from reverie_api.annotations import AnnotationStore, set_annotation_store
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +70,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         claude_client = ClaudeClient()
         summary_service = SummaryService(db, claude_client)
         compare_engine = CompareEngine(db, summary_service)
+        annotation_store = AnnotationStore(db)
 
         set_database(db)
         set_broker(broker)
@@ -75,6 +79,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         set_claude_client(claude_client)
         set_summary_service(summary_service)
         set_compare_engine(compare_engine)
+        set_annotation_store(annotation_store)
 
         # Stash on app.state for tests / introspection.
         app.state.db = db
@@ -84,6 +89,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.claude_client = claude_client
         app.state.summary_service = summary_service
         app.state.compare_engine = compare_engine
+        app.state.annotation_store = annotation_store
         app.state.settings = cfg
 
         try:
@@ -96,6 +102,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             set_claude_client(None)
             set_summary_service(None)
             set_compare_engine(None)
+            set_annotation_store(None)
             await db.close()
 
     app = FastAPI(
@@ -134,6 +141,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(graph_routes.router)
     app.include_router(salience_routes.router)
     app.include_router(compare_routes.router)
+    app.include_router(annotations_routes.router)
     app.include_router(stream_routes.router)
 
     return app
