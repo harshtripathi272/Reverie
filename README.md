@@ -32,7 +32,11 @@
   - [Zoom levels (L1–L4)](#zoom-levels-l1l4)
 - [The CLI in detail](#the-cli-in-detail)
 - [Recipes](#recipes)
-- [Instrumenting your own agent](#instrumenting-your-own-agent)
+- [Using Reverie in your own project](#using-reverie-in-your-own-project)
+  - [Option 1: Zero-code-change with reverie run](#option-1-zero-code-change-with-reverie-run-recommended)
+  - [Option 2: One-line import](#option-2-one-line-import-in-your-code)
+  - [Option 3: Add as a dependency](#option-3-add-reverie-as-a-dependency-in-your-project)
+  - [Option 4: Direct HTTP API (any framework)](#option-4-direct-http-api-any-framework-any-language)
 - [Configuration reference](#configuration-reference)
 - [Troubleshooting](#troubleshooting)
 - [FAQ](#faq)
@@ -489,27 +493,250 @@ analysis only.
 
 ---
 
-## Instrumenting your own agent
+## Using Reverie in your own project
 
-If you're using the **OpenAI Agents SDK**, just run with `reverie run` and
-you're done. No imports, no hooks, no decorators.
+Reverie is designed to plug into **any** project that runs AI agents. You
+don't need to restructure your code, add decorators, or change your
+architecture. Here are the four ways to integrate, from easiest to most
+flexible.
 
-If you're using a different framework, you have two options:
+---
 
-1. **Wait** — adapters for LangGraph, CrewAI, AutoGen, and MCP are on
-   the roadmap.
-2. **Emit events directly.** The cognitive event schema is documented in
-   [`SRS.md`](./SRS.md). The HTTP API accepts:
+### Option 1: Zero-code-change with `reverie run` (recommended)
 
-   - `POST /events` — single event.
-   - `POST /events/batch` — up to 50 events at once.
+If your agent uses the **OpenAI Agents SDK**, just prefix your normal
+command with `reverie run`:
 
-   Both endpoints validate against the `CognitiveEvent` schema. Look at
-   `packages/adapter-openai/` as a reference implementation; it's ~400
-   lines and walks through the full translation pattern.
+```bash
+# Instead of:
+python my_product/agent.py
 
-The schema is **frozen at v1.0**. New event types and fields are
-additive only; never breaking. Build against it with confidence.
+# You do:
+reverie run python my_product/agent.py
+
+# Works with modules too:
+reverie run python -m my_product.agent
+
+# Works with console scripts:
+reverie run my-agent-cli do-the-thing
+```
+
+**How it works:** Reverie injects a `sitecustomize.py` hook into the
+subprocess's Python environment (the same mechanism OpenTelemetry uses).
+This hook calls `reverie_openai.auto()` before your code runs, which
+registers a tracing processor on the OpenAI Agents SDK. Your agent code
+is never modified, never imported differently, never slowed down.
+
+**Your project structure stays exactly the same:**
+
+```
+my-product/
+├── my_product/
+│   ├── agent.py          <-- unchanged, no Reverie imports
+│   ├── tools.py
+│   └── ...
+├── pyproject.toml
+└── ...
+```
+
+**Requirements:**
+- The Reverie CLI must be installed (it is after `make install` in the
+  Reverie repo, or `pip install reverie-cli` once published).
+- The `reverie-adapter-openai` package must be importable in the same
+  Python environment as your agent.
+- The Reverie backend must be running (`reverie start` or `make dev`).
+
+---
+
+### Option 2: One-line import in your code
+
+If you want instrumentation to always be active — for example in a
+production service, a long-running daemon, or a Jupyter notebook — add
+one line at the top of your entrypoint:
+
+```python
+# my_product/main.py
+
+import reverie_openai
+reverie_openai.auto()   # <-- one line, that's it
+
+# ... rest of your agent code, completely unchanged
+from agents import Agent, Runner
+
+agent = Agent(name="my-bot", instructions="Summarize documents")
+result = Runner.run_sync(agent, "Summarize the Q4 report")
+```
+
+**Properties of `auto()`:**
+- **Idempotent** — safe to call multiple times (only installs once).
+- **Non-blocking** — events go to a background thread; your agent never
+  waits on Reverie.
+- **Graceful degradation** — if the backend is unreachable, events are
+  silently dropped. Your agent runs unchanged.
+- **Configurable via env vars** — set `REVERIE_BACKEND_URL`,
+  `REVERIE_AGENT_ID`, or `REVERIE_DISABLED` to control behavior without
+  touching code.
+
+---
+
+### Option 3: Add Reverie as a dependency in your project
+
+If you want your project to always ship with Reverie instrumentation
+available:
+
+```toml
+# my-product/pyproject.toml
+
+[project]
+dependencies = [
+    "openai-agents>=0.17",
+    "reverie-adapter-openai",    # <-- add this
+    # ... your other deps
+]
+```
+
+Then either use `reverie run` (Option 1) or call `reverie_openai.auto()`
+in code (Option 2). The adapter is ~400 lines and adds no heavy
+dependencies beyond `httpx`.
+
+---
+
+### Option 4: Direct HTTP API (any framework, any language)
+
+If you're using **LangGraph, CrewAI, AutoGen, a custom framework, or
+even a non-Python agent**, you can emit events directly to the Reverie
+backend's HTTP API. This works from any language that can make HTTP
+requests.
+
+**Single event:**
+
+```python
+import httpx
+
+event = {
+    "id": "evt-001",
+    "runId": "run-abc-123",
+    "parentId": None,
+    "type": "goal.created",
+    "agentId": "my-agent",
+    "timestamp": "2026-05-25T10:00:00Z",
+    "duration": 0,
+    "payload": {
+        "description": "Summarize the quarterly report"
+    },
+    "meta": {}
+}
+
+resp = httpx.post("http://127.0.0.1:8000/events", json=event)
+# 201 Created on success, 422 on validation failure
+```
+
+**Batch (up to 50 events at once):**
+
+```python
+events = [event1, event2, event3, ...]
+resp = httpx.post("http://127.0.0.1:8000/events/batch", json={"events": events})
+```
+
+**From JavaScript/TypeScript:**
+
+```typescript
+const event = {
+  id: "evt-001",
+  runId: "run-abc-123",
+  parentId: null,
+  type: "tool.called",
+  agentId: "my-agent",
+  timestamp: new Date().toISOString(),
+  duration: 1200,
+  payload: { tool: "web_search", input: { query: "latest news" } },
+  meta: {}
+};
+
+await fetch("http://127.0.0.1:8000/events", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(event),
+});
+```
+
+**From any language with curl:**
+
+```bash
+curl -X POST http://127.0.0.1:8000/events \
+  -H "Content-Type: application/json" \
+  -d '{"id":"evt-001","runId":"run-abc","parentId":null,"type":"goal.created","agentId":"my-agent","timestamp":"2026-05-25T10:00:00Z","duration":0,"payload":{"description":"Do the thing"},"meta":{}}'
+```
+
+**The 22 event types you can emit:**
+
+| Type | When to emit it |
+|---|---|
+| `goal.created` | Agent sets a new objective |
+| `goal.updated` | Goal description or priority changes |
+| `goal.completed` | Goal achieved successfully |
+| `goal.failed` | Goal abandoned or impossible |
+| `tool.called` | Agent invokes an external tool |
+| `tool.returned` | Tool returns a result |
+| `memory.retrieved` | Agent looks something up from memory |
+| `memory.stored` | Agent saves something to memory |
+| `retry.triggered` | A failed operation is being retried |
+| `validation.passed` | A check succeeded |
+| `validation.failed` | A check failed |
+| `reflection.generated` | Agent reflects on its own progress |
+| `subagent.spawned` | Agent delegates to a helper agent |
+| `subagent.completed` | Helper agent finished its work |
+| `planning.started` | Agent begins planning a strategy |
+| `planning.completed` | Plan is finalized |
+| `context.overflow` | Context window hit its limit |
+| `context.compressed` | Context was summarized to save space |
+| `decision.made` | Agent chose between alternatives |
+| `error.occurred` | An unexpected error happened |
+| `guardrail.triggered` | A safety guardrail activated |
+| `custom` | Anything else — use `payload` for details |
+
+The full schema with all field definitions is in [`SRS.md`](./SRS.md).
+Both endpoints validate every event against the schema — malformed
+events get a `422` with a clear error message, never silently accepted.
+
+---
+
+### Typical workflow in a real product
+
+```bash
+# Terminal 1 — Start Reverie (once, leave it running in the background)
+cd /path/to/reverie
+reverie start
+
+# Terminal 2 — Run your product's agent (from your project directory)
+cd /path/to/my-product
+reverie run python -m my_product.agent
+
+# Browser — Watch it live
+# http://localhost:3000 shows the run appearing in real time.
+# After the run finishes: replay, compare, debug.
+```
+
+**Important:** The Reverie backend stores everything locally in
+`data/reverie.db` (SQLite). Nothing leaves your machine unless you
+explicitly request an AI summary (which calls the Claude API).
+
+---
+
+### What if my framework isn't supported yet?
+
+| Framework | Status |
+|---|---|
+| **OpenAI Agents SDK** | Fully supported (auto-inject via `reverie run`) |
+| **LangGraph** | On the roadmap |
+| **CrewAI** | On the roadmap |
+| **AutoGen** | On the roadmap |
+| **MCP** | On the roadmap |
+| **Custom / other** | Use the HTTP API directly (Option 4 above) |
+
+The schema is **frozen at v1.0** — no removals, no renames, no type
+changes. Only additive changes. Build against it with confidence; it
+won't break under you.
 
 ---
 
