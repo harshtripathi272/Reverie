@@ -5,8 +5,12 @@
 #   - PowerShell-native equivalents are documented in each target.
 #   - The Python venv lives at ./.venv and the activation path is .venv\Scripts.
 
+ifeq ($(OS),Windows_NT)
 PY      := .venv/Scripts/python.exe
-UV      := py -m uv
+else
+PY      := .venv/bin/python
+endif
+UV      := uv
 PNPM    := pnpm
 
 .PHONY: help install install-py install-js test test-py test-js typecheck \
