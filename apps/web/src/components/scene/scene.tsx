@@ -31,6 +31,10 @@ export function Scene({ bundle, layout }: SceneProps) {
         powerPreference: "high-performance",
         toneMapping: THREE.NoToneMapping, // we use the post-fx pass instead
         outputColorSpace: THREE.SRGBColorSpace,
+        // Prefer a stencil buffer disabled — we don't use it and it costs
+        // memory on high-DPI displays.
+        stencil: false,
+        depth: true,
       }}
       camera={{
         position: [0, 60, 320],
@@ -42,13 +46,18 @@ export function Scene({ bundle, layout }: SceneProps) {
       onCreated={({ gl }) => {
         gl.setClearColor(0x000000, 1);
       }}
-      dpr={[1, 2]}
+      // Cap DPR at 2 — diminishing returns above 2 and big perf cost on 3x
+      // Retina displays. Floor at 1.5 so we never look pixelated.
+      dpr={[1.5, 2]}
       className="absolute inset-0"
     >
-      {/* Subtle ambient tint so non-emissive bits don't go pure black. */}
-      <ambientLight intensity={0.05} />
+      {/* Subtle ambient + a single directional rim light. With the body now
+          using MeshStandardMaterial, a touch of directional light gives the
+          spheres a proper round shading gradient instead of looking flat. */}
+      <ambientLight intensity={0.18} />
+      <directionalLight position={[200, 300, 200]} intensity={0.5} />
 
-      <fog attach="fog" args={["#020818", 320, 1400]} />
+      <fog attach="fog" args={["#020818", 600, 1800]} />
 
       <Starfield count={1800} />
 
@@ -60,17 +69,18 @@ export function Scene({ bundle, layout }: SceneProps) {
 
       {/*
         Post-processing pipeline:
-          - Bloom on emissive surfaces only (orbs are toneMapped=false so
-            their colors exceed 1.0, making them eligible for bloom).
-          - ACES filmic tone mapping for cinematic curve.
+          - Bloom is tuned for *tight* glow rather than a soft haze. Higher
+            threshold + smaller radius keeps the highlight close to the orb,
+            which makes the orbs themselves read as crisp circles.
+          - ACES filmic tone mapping for cinematic colors.
        */}
-      <EffectComposer multisampling={0}>
+      <EffectComposer multisampling={4}>
         <Bloom
-          intensity={1.4}
-          luminanceThreshold={0.18}
-          luminanceSmoothing={0.85}
+          intensity={0.95}
+          luminanceThreshold={0.55}
+          luminanceSmoothing={0.20}
           mipmapBlur
-          radius={0.78}
+          radius={0.45}
         />
         <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
       </EffectComposer>

@@ -9,17 +9,24 @@ import { radiusFromSalience, visualFor } from "@/lib/colors";
 import type { GraphNode } from "@/lib/types";
 
 /**
- * One glowing orb. Custom shader gives a soft Fresnel rim — looks like a
- * bioluminescent organism rather than a flat sphere with bloom dialed up.
+ * One glowing orb.
  *
- * Three layers stack (cheaply) per orb:
+ * Visual structure (kept deliberately simple to avoid the "fuzz pile-up" of
+ * stacking many transparent layers):
  *
- *   1. Inner core: small, ultra-bright, contributes most of the bloom
- *   2. Mantle: emissive sphere at the visible radius
- *   3. Halo: a slightly larger transparent sphere with rim-only opacity
- *      so the silhouette glows even at oblique camera angles
+ *   1. Body — fully opaque, high-segment-count sphere. This gives the orb a
+ *      clean, crisp silhouette regardless of how aggressive the bloom is.
+ *      The body's emissive material drives the bloom highlights.
  *
- * Failed orbs and on-critical-path orbs pulse via uniform time.
+ *   2. Halo — a slightly larger sphere (×1.15) with a Fresnel rim shader.
+ *      Only the silhouette rim is visible; the front-facing pixels are fully
+ *      transparent. Renders behind the body via render order so the body's
+ *      hard edge wins where the two overlap.
+ *
+ *   3. Selection ring — torus, only when ``selected``.
+ *
+ * Pulse uniforms drive subtle "breath" animations on failed / on-critical
+ * orbs without ever touching position or scale.
  */
 
 interface OrbProps {
@@ -31,12 +38,16 @@ interface OrbProps {
 
 const HALO_VERTEX_SHADER = /* glsl */ `
   varying vec3 vNormal;
-  varying vec3 vViewPosition;
+  varying vec3 vViewDir;
+
   void main() {
-    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-    vViewPosition = -mvPosition.xyz;
-    vNormal = normalize(normalMatrix * normal);
-    gl_Position = projectionMatrix * mvPosition;
+    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+    vec4 viewPosition = viewMatrix * worldPosition;
+    // World-space normal is what we want for a stable Fresnel — model normals
+    // would shift as the orb scales.
+    vNormal = normalize(mat3(modelMatrix) * normal);
+    vViewDir = normalize(cameraPosition - worldPosition.xyz);
+    gl_Position = projectionMatrix * viewPosition;
   }
 `;
 
@@ -47,19 +58,20 @@ const HALO_FRAGMENT_SHADER = /* glsl */ `
   uniform float uPulse;
 
   varying vec3 vNormal;
-  varying vec3 vViewPosition;
+  varying vec3 vViewDir;
 
   void main() {
-    vec3 viewDir = normalize(vViewPosition);
-    // Fresnel: brightest where the normal is perpendicular to the view.
-    float fresnel = 1.0 - max(dot(vNormal, viewDir), 0.0);
-    fresnel = pow(fresnel, 2.5);
+    // Fresnel: 0 at front-facing pixels, 1 at the silhouette.
+    float fresnel = 1.0 - max(dot(vNormal, vViewDir), 0.0);
+    // Tighten the rim so it's a sharp ring instead of a soft cloud.
+    float rim = pow(fresnel, 4.0);
 
-    // Pulse modulates the rim — slow breath when uPulse > 0.
-    float pulse = 1.0 + uPulse * 0.4 * sin(uTime * 2.5);
+    // Slow pulse modulates only the rim brightness — never grows the orb.
+    float pulse = 1.0 + uPulse * 0.30 * sin(uTime * 2.4);
 
-    float alpha = fresnel * uIntensity * pulse;
-    vec3 col = uColor * (0.6 + fresnel * 1.8);
+    float alpha = rim * uIntensity * pulse;
+    // Color stays close to the base — no over-saturation when the rim is hot.
+    vec3 col = uColor * (0.9 + rim * 1.6);
     gl_FragColor = vec4(col, alpha);
   }
 `;
@@ -69,20 +81,19 @@ export function Orb({ node, position, selected = false, onClick }: OrbProps) {
   const baseRadius = visual.radius;
   const radius = radiusFromSalience(baseRadius, node.salience);
 
-  // Pulse strength: 1.0 for failed events / on-critical-path, 0.5 for
-  // anomalies, 0.0 otherwise.
+  // Pulse strength: failed orbs breathe most, then critical-path, then anomalies.
   const pulse = useMemo(() => {
     if (node.type.endsWith(".failed")) return 1.0;
-    if (node.onCriticalPath) return 0.7;
-    if (node.anomalies.length > 0) return 0.5;
+    if (node.onCriticalPath) return 0.6;
+    if (node.anomalies.length > 0) return 0.4;
     return 0.0;
   }, [node.type, node.onCriticalPath, node.anomalies.length]);
 
-  // Halo material with custom shader — enabled by uniforms we can update.
+  // Halo shader uniforms.
   const haloUniforms = useMemo(
     () => ({
       uColor: { value: visual.color.clone() },
-      uIntensity: { value: visual.glow * (selected ? 1.6 : 1.0) },
+      uIntensity: { value: visual.glow * (selected ? 1.55 : 1.0) },
       uTime: { value: 0 },
       uPulse: { value: pulse },
     }),
@@ -97,55 +108,49 @@ export function Orb({ node, position, selected = false, onClick }: OrbProps) {
         fragmentShader: HALO_FRAGMENT_SHADER,
         transparent: true,
         blending: THREE.AdditiveBlending,
+        // Halo must NOT write to depth, otherwise it occludes other orbs
+        // through its transparent center.
         depthWrite: false,
+        // Render the rim only — back faces are pointed away from camera and
+        // would double the alpha at glancing angles.
         side: THREE.FrontSide,
+        toneMapped: false,
       }),
     [haloUniforms],
   );
 
-  // Core / mantle materials — fully emissive (post-processing bloom does the
-  // glow propagation; these stay matte-bright).
-  const coreMaterial = useMemo(
-    () =>
-      new THREE.MeshBasicMaterial({
-        color: visual.color.clone().multiplyScalar(2.4),
-        transparent: true,
-        opacity: 0.95,
-        toneMapped: false,
-      }),
-    [visual.color],
-  );
+  // Body — fully opaque emissive sphere. Bloom handles the outward glow;
+  // we keep the silhouette razor sharp.
+  const bodyMaterial = useMemo(() => {
+    const baseColor = visual.color;
+    return new THREE.MeshStandardMaterial({
+      color: baseColor,
+      emissive: baseColor,
+      // emissiveIntensity > 1 pushes the pixel above the bloom threshold,
+      // which is what gives the orb its outward glow. Tuned to read clean
+      // at the dimmer bloom settings the scene uses.
+      emissiveIntensity: visual.glow * 1.4,
+      roughness: 0.42,
+      metalness: 0.0,
+      transparent: false,
+      toneMapped: false,
+    });
+  }, [visual.color, visual.glow]);
 
-  const mantleMaterial = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: visual.color,
-        emissive: visual.color,
-        emissiveIntensity: visual.glow * 1.6,
-        roughness: 0.3,
-        metalness: 0.0,
-        transparent: true,
-        opacity: 0.9,
-        toneMapped: false,
-      }),
-    [visual.color, visual.glow],
-  );
-
-  // Animate selection scale + halo pulse.
+  // Animate selection scale + halo pulse — never touches position.
   const groupRef = useRef<THREE.Group>(null);
-  const targetScale = selected ? 1.18 : 1.0;
+  const targetScale = selected ? 1.16 : 1.0;
   useFrame((state, delta) => {
     if (!groupRef.current) return;
-    // Smooth scale lerp toward target — never snap.
     const cur = groupRef.current.scale.x;
     const next = THREE.MathUtils.lerp(cur, targetScale, 1 - Math.exp(-delta * 8));
     groupRef.current.scale.setScalar(next);
-    // Drive halo pulse uniform.
     haloUniforms.uTime.value = state.clock.elapsedTime;
   });
 
-  // Cap segment count by orb size for perf — small orbs don't need 32 segments.
-  const segments = baseRadius >= 6 ? 24 : baseRadius >= 4 ? 16 : 12;
+  // Geometry resolution. Bigger orbs = more segments. Floor at 32 so even
+  // small orbs read as clean spheres rather than polyhedra.
+  const segments = baseRadius >= 7 ? 64 : baseRadius >= 5 ? 48 : 36;
 
   return (
     <group
@@ -163,29 +168,28 @@ export function Orb({ node, position, selected = false, onClick }: OrbProps) {
         document.body.style.cursor = "";
       }}
     >
-      {/* Halo (transparent, fresnel rim). */}
+      {/* Halo first — renderOrder lower so the body draws on top. */}
       <Sphere
-        args={[radius * 1.65, segments, segments]}
+        args={[radius * 1.18, segments, segments]}
         material={haloMaterial}
+        renderOrder={0}
       />
-      {/* Mantle (visible body). */}
+
+      {/* Body — opaque, sharp silhouette. */}
       <Sphere
         args={[radius, segments, segments]}
-        material={mantleMaterial}
+        material={bodyMaterial}
+        renderOrder={1}
       />
-      {/* Bright core. */}
-      <Sphere
-        args={[radius * 0.55, segments, segments]}
-        material={coreMaterial}
-      />
-      {/* Selection ring — only shown when selected. */}
+
+      {/* Selection ring — only when selected. Toroidal halo, not transparent. */}
       {selected && (
-        <mesh rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[radius * 2.1, 0.25, 12, 64]} />
+        <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={2}>
+          <torusGeometry args={[radius * 1.85, 0.15, 16, 96]} />
           <meshBasicMaterial
             color={visual.hex}
             transparent
-            opacity={0.85}
+            opacity={0.95}
             toneMapped={false}
           />
         </mesh>

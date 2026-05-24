@@ -315,24 +315,43 @@ That gap is the market. Reverie is the answer.
 
 ---
 
-## The build philosophy — why we build in this exact order
+## The build philosophy — why we built it in this exact order
 
-There is one rule that governs every build decision:
+There is one rule that governed every build decision:
 
 **If the replay feature is useful in a terminal with no visual interface, you have built real infrastructure. If it only makes sense with glowing orbs, you built a demo.**
 
-This rule dictates the build order completely.
+This rule dictated the build order completely.
 
-Phase 0 is pure backend and CLI. Events flowing. Nothing visual.  
-Phase 1 is replay in the terminal. No browser.  
-Phase 2 is graph intelligence — semantic processing, no rendering.  
-Phase 3 is compression and AI summaries — still no pretty UI.  
-Phase 4 is comparative debugging — the most complex feature, still without the visual.  
-Phase 5 is the 3D renderer — the last thing built, on top of infrastructure that already works.
+Phase 0 was pure backend and CLI. Events flowing. Nothing visual.  
+Phase 1 was replay in the terminal. No browser.  
+Phase 2 was graph intelligence — semantic processing, no rendering.  
+Phase 3 was compression and AI summaries — still no pretty UI.  
+Phase 4 was comparative debugging — the most complex feature, still without the visual.  
+Phase 5 was the 3D renderer — the last thing built, on top of infrastructure that already works.
 
-This means that if the 3D renderer never shipped — if it were cancelled the day before launch — engineers would still have a genuinely useful debugging platform. The orb world is the face of Reverie. It is not the soul of it.
+This means that even if the 3D renderer were stripped away tomorrow, engineers would still have a genuinely useful debugging platform. The orb world is the face of Reverie. It is not the soul of it.
 
 The soul is the event schema.
+
+---
+
+## What's working today
+
+Every phase of the original plan is shipped and gate-passed. In numbers, that's:
+
+- **22 cognitive event types** in the frozen v1.0 schema, validated identically by the Python (Pydantic v2) and TypeScript (Zod) implementations.
+- **One adapter** for the OpenAI Agents SDK that auto-injects via `reverie run python my_agent.py` — no code changes to the user's agent.
+- **A FastAPI + SQLite (WAL) backend** with append-only event storage, atomic batch ingest, and a WebSocket fan-out for live subscribers. Single-event ingest sits well under the 5 ms p50 budget.
+- **A snapshot engine** that reconstructs the full agent state at any point in any run. Lazy checkpointing every 50 events keeps replay seeks cheap without burdening ingestion.
+- **A graph intelligence layer** that builds the cognitive DAG, assigns semantic zoom levels (L1–L4), and runs all six SRS-defined anomaly heuristics: loop, hotspot, bottleneck, poison memory, explosion, abandon.
+- **A salience scorer** that ranks every node by importance to the run outcome, and an AI summary service backed by Claude (graceful no-op without an API key, DB-cached so the same region never gets summarized twice).
+- **A comparative debugger** that aligns two runs via Needleman-Wunsch over event semantics, computes the structured diff across all seven SRS dimensions, walks the fault tree from a failure back to its root, and generates an AI narrative explaining why the runs diverged.
+- **A 3D spatial renderer** built on Next.js 15 + React Three Fiber 9, with custom Fresnel-rim shaders on every orb, ACES filmic tone mapping, selective bloom on emissive surfaces only, damped orbit camera, d3-force-3d layout, and a glassmorphism HUD.
+- **A `reverie` CLI** with eleven subcommands: `run`, `status`, `runs list/show`, `replay` (with `--jump-failure` and `--to N`), `state`, `graph`, `anomalies`, `zoom`, `summary`, `compare`. Most ship a `--json` mode for piping into other tools.
+- **400+ tests** across the project — Python schema, Python adapter, FastAPI integration, snapshot engine, graph builder, anomaly detectors, salience scorer, AI client (mocked HTTP), comparative debugger, and the CLI. The 27 TypeScript schema tests + Python's interop test guarantee both languages produce byte-identical wire format.
+
+The whole stack is built so a developer can clone the repo, run `make dev`, and within thirty seconds have a backend, an instrumented agent run, and a 3D explorer at `localhost:3000`.
 
 ---
 
@@ -353,15 +372,15 @@ Secondary users include:
 
 ## The long-term vision
 
-Reverie starts as a developer tool. It ends as the observability standard for autonomous systems.
+Reverie ships as a developer tool. It is built to become the observability standard for autonomous systems.
 
-Today: you debug a single agent run, understand why it failed, fix the bug.
+Today: clone the repo, instrument an agent, debug a failed run in 3D — all in the same afternoon.
 
 In one year: Reverie's cognitive event schema is being adopted by major agent frameworks as a standard output format. Third-party adapters are being built by the community. The schema becomes the lingua franca of agent cognition, the same way OpenTelemetry became the lingua franca of distributed system traces.
 
 In three years: every serious AI agent in production runs with Reverie instrumentation the same way every serious web application runs with OpenTelemetry tracing. Cognitive observability is not a feature; it is assumed.
 
-The path there is through the developer community. Open source the schema. Open source the adapters. Open source the CLI and backend. Make it trivially easy to instrument any agent. The 3D interface is what brings people in. The schema is what keeps them, and what grows the ecosystem.
+The path there is through the developer community. The schema is open. The adapters are open. The CLI, backend, and 3D renderer are open. It's trivially easy to instrument any agent. The 3D interface is what brings people in. The schema is what keeps them, and what grows the ecosystem.
 
 ---
 
@@ -369,13 +388,13 @@ The path there is through the developer community. Open source the schema. Open 
 
 Autonomous agents are moving from toy projects to production infrastructure. They are running longer, making more decisions, using more tools, managing more memory, delegating to more sub-agents. As they become more capable, they become more opaque.
 
-The tools to understand them have not kept pace. The industry is debugging 2025-level agents with 2020-level tools. Text logs and manually reading traces.
+The tools to understand them have not kept pace. The industry is debugging 2026-level agents with 2020-level tools. Text logs and manually reading traces.
 
-Reverie is early infrastructure for a problem that is about to become critical. The right time to build it is now, before everyone realizes they need it.
+Reverie is the answer that ships today. The schema is frozen. The adapters work. The replay engine reconstructs state at any moment. The graph intelligence layer surfaces anomalies automatically. The comparative debugger identifies divergence between runs. The 3D renderer makes cognition something you can navigate spatially.
 
-The category is real. The gap exists. The architecture is sound.
+The category is real. The gap exists. The architecture is sound. The build is shipped.
 
-Now we build.
+Now we grow it.
 
 ---
 

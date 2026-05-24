@@ -58,8 +58,9 @@ export function Connection({
       new THREE.TubeGeometry(
         curve,
         TUBE_SEGMENTS,
-        isCritical ? 0.5 : 0.18,
-        8,
+        isCritical ? 0.45 : 0.14,
+        // More radial segments = rounder, less faceted tube.
+        12,
         false,
       ),
     [curve, isCritical],
@@ -70,14 +71,18 @@ export function Connection({
       return new THREE.MeshBasicMaterial({
         color: visual.color,
         transparent: true,
-        opacity: 0.85,
+        opacity: 0.9,
         toneMapped: false,
       });
     }
     return new THREE.MeshBasicMaterial({
       color: 0x9ca3af,
       transparent: true,
-      opacity: 0.18,
+      // Slightly higher opacity than before — at 0.18 the lines were too
+      // ghostly to read as connections; 0.32 keeps them clearly visible
+      // without competing with the orbs for attention.
+      opacity: 0.32,
+      toneMapped: false,
     });
   }, [isCritical, visual.color]);
 
