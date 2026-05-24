@@ -103,9 +103,37 @@ async def _migration_002_run_checkpoints(conn: aiosqlite.Connection) -> None:
     )
 
 
+async def _migration_003_ai_summaries(conn: aiosqlite.Connection) -> None:
+    """Create the ``ai_summaries`` cache for Claude-generated text.
+
+    Keyed by ``(scope, scope_id, content_hash)`` so identical regions reuse
+    the same row. ``scope`` is "cluster" for Phase 3 and "comparison" for
+    Phase 4.
+    """
+
+    await conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS ai_summaries (
+            scope         TEXT NOT NULL,
+            scope_id      TEXT NOT NULL,
+            content_hash  TEXT NOT NULL,
+            text          TEXT NOT NULL,
+            status        TEXT NOT NULL,
+            model         TEXT NOT NULL,
+            created_at    INTEGER NOT NULL,
+            PRIMARY KEY (scope, scope_id, content_hash)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_ai_summaries_scope
+          ON ai_summaries(scope, scope_id);
+        """
+    )
+
+
 MIGRATIONS: list[Migration] = [
     _migration_001_initial_schema,
     _migration_002_run_checkpoints,
+    _migration_003_ai_summaries,
 ]
 
 
