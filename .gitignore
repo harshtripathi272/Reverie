@@ -36,6 +36,14 @@ data/
 *.db-wal
 *.db-shm
 
+# Generated web app bundle (built by scripts/bundle_web_app.py)
+apps/api/src/reverie_api/_web_static/
+
+# PyInstaller standalone-binary build artifacts
+build_dist/
+build_work/
+reverie.spec
+
 # IDE
 .vscode/
 .idea/

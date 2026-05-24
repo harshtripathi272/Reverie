@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
+    "build:static": "node -e \"process.env.REVERIE_BUILD_MODE='static';require('child_process').spawnSync(process.platform==='win32'?'next.cmd':'next',['build'],{stdio:'inherit',env:process.env})\"",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"

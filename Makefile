@@ -10,7 +10,7 @@ UV      := py -m uv
 PNPM    := pnpm
 
 .PHONY: help install install-py install-js test test-py test-js typecheck \
-        fixtures clean dev smoke
+        fixtures clean dev smoke build-web bundle binary
 
 help:
 	@echo "Reverie developer targets:"
@@ -18,6 +18,9 @@ help:
 	@echo "  make test         run every test suite"
 	@echo "  make typecheck    run TypeScript type-check"
 	@echo "  make fixtures     regenerate cross-language fixtures"
+	@echo "  make build-web    static-export the 3D explorer to apps/web/out"
+	@echo "  make bundle       bundle the web app into the API wheel"
+	@echo "  make binary       build a single standalone binary with PyInstaller"
 	@echo "  make dev          start the FastAPI backend (uvicorn, with reload)"
 	@echo "  make smoke        end-to-end smoke test against a running backend"
 	@echo "  make clean        remove build artifacts"
@@ -71,6 +74,24 @@ dev:
 
 smoke:
 	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1
+
+# -----------------------------------------------------------------------------
+# Distribution builds
+# -----------------------------------------------------------------------------
+
+# Build the 3D explorer as a static export, ready to be served by the API.
+build-web:
+	$(PNPM) -C apps/web build:static
+
+# Bundle the static export into the reverie-api package source tree so the
+# next pip/wheel build picks it up automatically.
+bundle: build-web
+	$(PY) scripts/bundle_web_app.py
+
+# Build a single standalone binary that includes Python, the API, the CLI,
+# and the bundled web app. Output lands in build_dist/.
+binary: bundle
+	$(PY) scripts/build_binary.py
 
 # -----------------------------------------------------------------------------
 # Clean

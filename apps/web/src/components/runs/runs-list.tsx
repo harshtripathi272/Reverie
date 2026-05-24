@@ -68,7 +68,7 @@ export function RunsList() {
       {runs.map((run) => (
         <li key={run.id}>
           <Link
-            href={`/run/${run.id}`}
+            href={`/run?id=${run.id}`}
             className="glass group flex items-center justify-between gap-4 px-5 py-4 transition hover:border-white/15 hover:bg-white/[0.03]"
           >
             <div className="min-w-0 flex-1">

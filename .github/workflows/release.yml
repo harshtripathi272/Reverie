@@ -1,0 +1,226 @@
+name: Release
+
+# Triggered by:
+#   - pushing a tag like v0.2.0  → real release
+#   - manual dispatch              → dry-run for verification
+#
+# Builds:
+#   - Python wheels (sdist + bdist_wheel) for the four packages
+#   - Standalone binaries for Linux, macOS, Windows
+#
+# Publishes (only on tag):
+#   - Wheels to PyPI
+#   - Binaries as GitHub Release assets
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  # ---------------------------------------------------------------- wheels
+  wheels:
+    name: Build Python wheels
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - name: Install JS deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Static-export the web app
+        run: pnpm -C apps/web build:static
+
+      - name: Bundle web app into API package
+        run: python scripts/bundle_web_app.py
+
+      - name: Install build tools
+        run: pip install --upgrade build wheel
+
+      - name: Build all four wheels
+        run: |
+          python -m build packages/schema-py
+          python -m build packages/adapter-openai
+          python -m build apps/api
+          python -m build cli
+
+      - name: Collect wheels
+        run: |
+          mkdir -p dist-all
+          cp packages/schema-py/dist/* dist-all/
+          cp packages/adapter-openai/dist/* dist-all/
+          cp apps/api/dist/* dist-all/
+          cp cli/dist/* dist-all/
+          ls -la dist-all/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels
+          path: dist-all/*
+
+  # ---------------------------------------------------------------- binaries
+  binaries:
+    name: Build ${{ matrix.os }} binary
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: reverie-linux-x64
+            binary_name: reverie
+          - os: macos-latest
+            artifact: reverie-macos-arm64
+            binary_name: reverie
+          - os: windows-latest
+            artifact: reverie-windows-x64
+            binary_name: reverie.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - name: Install JS deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+          enable-cache: false
+
+      # Linux/macOS use bash, Windows uses cmd. Use shell-agnostic commands.
+      - name: Set up venv + install Reverie packages
+        shell: bash
+        run: |
+          uv venv .venv --python 3.12
+          if [ -d ".venv/Scripts" ]; then
+            PYBIN=".venv/Scripts/python.exe"
+          else
+            PYBIN=".venv/bin/python"
+          fi
+          uv pip install --python "$PYBIN" -e "packages/schema-py"
+          uv pip install --python "$PYBIN" -e "apps/api"
+          uv pip install --python "$PYBIN" -e "packages/adapter-openai"
+          uv pip install --python "$PYBIN" -e "cli"
+          uv pip install --python "$PYBIN" pyinstaller
+
+      - name: Static-export the web app
+        run: pnpm -C apps/web build:static
+
+      - name: Bundle web app into API package
+        shell: bash
+        run: |
+          if [ -d ".venv/Scripts" ]; then
+            PYBIN=".venv/Scripts/python.exe"
+          else
+            PYBIN=".venv/bin/python"
+          fi
+          "$PYBIN" scripts/bundle_web_app.py
+
+      - name: Build standalone binary
+        shell: bash
+        run: |
+          if [ -d ".venv/Scripts" ]; then
+            PYBIN=".venv/Scripts/python.exe"
+          else
+            PYBIN=".venv/bin/python"
+          fi
+          "$PYBIN" scripts/build_binary.py --clean
+
+      - name: Smoke-test binary
+        shell: bash
+        run: |
+          if [ -f "build_dist/${{ matrix.binary_name }}" ]; then
+            "./build_dist/${{ matrix.binary_name }}" --version
+            "./build_dist/${{ matrix.binary_name }}" --help
+          else
+            echo "Binary not found at build_dist/${{ matrix.binary_name }}"
+            ls -la build_dist/
+            exit 1
+          fi
+
+      - name: Compute sha256
+        shell: bash
+        run: |
+          cd build_dist
+          if command -v sha256sum >/dev/null; then
+            sha256sum "${{ matrix.binary_name }}" > "${{ matrix.binary_name }}.sha256"
+          else
+            shasum -a 256 "${{ matrix.binary_name }}" > "${{ matrix.binary_name }}.sha256"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            build_dist/${{ matrix.binary_name }}
+            build_dist/${{ matrix.binary_name }}.sha256
+
+  # --------------------------------------------------------------- publish
+  publish:
+    name: Publish release
+    needs: [wheels, binaries]
+    runs-on: ubuntu-latest
+    # Only run on actual tag pushes — not on workflow_dispatch.
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Stage release files
+        run: |
+          mkdir -p release
+          # Rename binaries so they include the platform.
+          mv artifacts/reverie-linux-x64/reverie         release/reverie-linux-x64
+          mv artifacts/reverie-linux-x64/reverie.sha256  release/reverie-linux-x64.sha256
+          mv artifacts/reverie-macos-arm64/reverie       release/reverie-macos-arm64
+          mv artifacts/reverie-macos-arm64/reverie.sha256 release/reverie-macos-arm64.sha256
+          mv artifacts/reverie-windows-x64/reverie.exe   release/reverie-windows-x64.exe
+          mv artifacts/reverie-windows-x64/reverie.exe.sha256 release/reverie-windows-x64.exe.sha256
+          # Wheels.
+          cp artifacts/wheels/* release/
+          ls -la release/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true
+
+      # Uncomment when PyPI trusted publisher is configured for this repo.
+      # - name: Publish wheels to PyPI
+      #   uses: pypa/gh-action-pypi-publish@release/v1
+      #   with:
+      #     packages-dir: artifacts/wheels

@@ -91,7 +91,7 @@ You need three things on your machine before installing.
 |---|---|---|
 | **Python 3.11+** | Backend, adapter, and CLI | [python.org](https://www.python.org/downloads/) |
 | **`uv`** (fast Python package manager) | Creates the venv and installs Python packages | `pip install uv` or see [docs.astral.sh/uv](https://docs.astral.sh/uv/getting-started/installation/) |
-| **Node.js 20+ with `pnpm`** | The 3D web explorer | [nodejs.org](https://nodejs.org/) then `npm install -g pnpm@10` |
+| **Node.js 20+ with `pnpm`** | The 3D web explorer (only needed for development; not for end-users running the bundled binary) | [nodejs.org](https://nodejs.org/) then `npm install -g pnpm@10` |
 
 Optional but recommended:
 
@@ -102,7 +102,37 @@ Optional but recommended:
   AI summary feature. Reverie works without it; AI buttons just become
   no-ops.
 
-### Install
+### Three ways to install
+
+**1. Single binary (simplest, end-user)**
+
+Download the pre-built binary for your OS from the
+[releases page](https://github.com/your-org/reverie/releases):
+
+```bash
+# macOS/Linux
+chmod +x reverie-linux-x64
+./reverie-linux-x64 start
+
+# Windows
+./reverie-windows-x64.exe start
+```
+
+No Python, no Node, no pnpm. The binary bundles the entire stack —
+backend, adapter, CLI, and the 3D explorer — into one file. ~30 MB.
+
+**2. PyPI install (recommended for Python users)**
+
+```bash
+pipx install reverie
+reverie start
+```
+
+The `pipx` install gives you `reverie` on your PATH, with the 3D
+explorer bundled in (no Node toolchain needed). Use `pip install reverie`
+if you'd rather install into your project's venv.
+
+**3. From source (for development)**
 
 ```bash
 git clone https://github.com/<your-org>/reverie.git
@@ -305,6 +335,27 @@ critical-path membership, anomaly markers, and resource consumption.
 Every CLI command takes `--help` for the full list of flags. Most ship a
 `--json` flag so you can pipe results into other tools.
 
+### `reverie init` — make the CLI accessible from anywhere
+
+Saves the path of your Reverie checkout (or installation) to
+`~/.reverie/config.json`. After this, every other command — `start`, `run`,
+`annotate`, `guidance` — works from any directory on your machine.
+
+```bash
+# From inside the Reverie checkout (auto-detects):
+reverie init
+
+# From anywhere, with explicit path:
+reverie init --repo /path/to/reverie
+
+# Inspect / clear:
+reverie init --show
+reverie init --clear
+```
+
+Resolution order for the repo path: explicit `--repo` flag → `REVERIE_REPO`
+env var → saved config → walk upward from cwd looking for marker files.
+
 ### `reverie start` — boot everything
 
 Spawns the backend, waits for it to be healthy, spawns the web app, opens
@@ -437,6 +488,54 @@ the first divergence, computes the structured diff across all seven
 dimensions, walks the fault tree backward from the failure to its root
 cause, and writes an AI narrative explaining what went wrong (if the API
 key is set).
+
+### `reverie annotate` and `reverie guidance` — steer the next run with feedback
+
+After a run finishes, you can mark nodes in the graph as `avoid`,
+`focus`, `done`, or `note`. Those annotations are attached to the agent
+(not just the run) and the **next** run automatically receives them as a
+system-prompt prefix when you opt in.
+
+```bash
+# Mark a dead-end so the agent doesn't try it again next time.
+reverie annotate <run-id> <node-id> avoid --note "this approach was too broad"
+
+# Mark a promising direction for the agent to focus on.
+reverie annotate <run-id> <node-id> focus --note "the cached lookup was efficient"
+
+# Mark something as already done — agent skips it on repeat encounter.
+reverie annotate <run-id> <node-id> done
+
+# List or clear annotations on a run.
+reverie annotations <run-id>
+reverie annotations <run-id> --clear
+
+# Preview what the next run will see.
+reverie guidance <agent-id>
+reverie guidance <agent-id> --format prompt    # raw text
+reverie guidance <agent-id> --format markdown  # for humans
+reverie guidance <agent-id> --tag research     # filter by topic
+reverie guidance <agent-id> --clear            # wipe all guidance for this agent
+
+# Activate the feedback loop for the next run.
+REVERIE_USE_GUIDANCE=1 reverie run python my_agent.py
+```
+
+The agent receives a clean prompt prefix like:
+
+```
+PRIOR RUN GUIDANCE FROM USER:
+
+Avoid these approaches (the user marked them as dead-ends):
+  - tool.called: this approach was too broad
+
+Focus on these directions (the user marked them as promising):
+  - memory.retrieved: the cached lookup was efficient
+```
+
+This is a **between-runs** mechanism, not mid-flight intervention. Runs
+are immutable; annotations live alongside them. You always run the agent
+again, with the user-curated context applied.
 
 ---
 

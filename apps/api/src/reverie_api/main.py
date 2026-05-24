@@ -45,6 +45,7 @@ from reverie_api.snapshot.engine import (
     SnapshotEngine,
     set_snapshot_engine,
 )
+from reverie_api.static import mount_web_app
 
 from reverie_api.annotations import AnnotationStore, set_annotation_store
 
@@ -143,6 +144,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(compare_routes.router)
     app.include_router(annotations_routes.router)
     app.include_router(stream_routes.router)
+
+    # Mount the bundled web app LAST so it doesn't shadow API routes.
+    # Returns None if no static export is present (headless mode).
+    mount_web_app(app)
 
     return app
 

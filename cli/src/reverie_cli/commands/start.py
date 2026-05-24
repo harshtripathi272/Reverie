@@ -119,14 +119,28 @@ def start_command(
         raise SystemExit(1)
 
     # ---- Optional: resolve pnpm for the web app.
+    # If a bundled static export already exists in the API package,
+    # the API serves the web app at the same origin and we don't need
+    # pnpm at all — saving the user the entire Node toolchain.
     pnpm = None
-    if not no_web:
+    bundled_static = _detect_bundled_static(repo_root)
+    if not no_web and bundled_static is not None:
+        # Bundled mode: API serves the web app on backend_port. Don't spawn
+        # a separate Next process and don't fail just because pnpm is absent.
+        no_web = True
+        web_port = backend_port
+        console.print(
+            f"  [dim]web app bundled into API; using single origin[/dim]"
+        )
+    elif not no_web:
         pnpm = shutil.which("pnpm")
         if pnpm is None:
             console.print(
                 "[yellow]warning:[/yellow] pnpm not found on PATH; "
                 "skipping the web app.\n"
-                "  Install it from https://pnpm.io and re-run, or pass --no-web."
+                "  Install it from https://pnpm.io and re-run, or pass --no-web,\n"
+                "  or build the static bundle once with\n"
+                "  [bold]pnpm -C apps/web build:static[/bold] to skip pnpm at runtime."
             )
             no_web = True
 
@@ -259,6 +273,30 @@ def _resolve_backend_python(repo_root: Path) -> Path | None:
     # everything system-wide.
     if shutil.which("python"):
         return Path(sys.executable)
+    return None
+
+
+def _detect_bundled_static(repo_root: Path) -> Path | None:
+    """Return the static export directory if it exists, else None.
+
+    When this returns a path, the FastAPI backend will serve the web app
+    itself and ``reverie start`` doesn't need to spawn pnpm.
+
+    Two locations are checked:
+
+    1. ``apps/api/src/reverie_api/_web_static/`` — the install-time
+       location for wheels.
+    2. ``apps/web/out/`` — the dev-time location after running
+       ``pnpm -C apps/web build:static``.
+    """
+
+    candidates = [
+        repo_root / "apps" / "api" / "src" / "reverie_api" / "_web_static",
+        repo_root / "apps" / "web" / "out",
+    ]
+    for c in candidates:
+        if (c / "index.html").exists():
+            return c
     return None
 
 
