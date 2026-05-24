@@ -1,0 +1,305 @@
+{
+  "events": [
+    {
+      "agentId": "agent-fixture",
+      "anomaly": false,
+      "depth": 0,
+      "durationMs": null,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "parentId": null,
+      "payload": {
+        "_type": "goal",
+        "context": "ctx",
+        "intent": "Research X",
+        "priority": "high"
+      },
+      "runId": "11111111-1111-4111-8111-111111111111",
+      "salience": null,
+      "schemaVersion": "1.0",
+      "sessionId": "22222222-2222-4222-8222-222222222222",
+      "timestamp": 1700000000001,
+      "type": "goal.created"
+    },
+    {
+      "agentId": "agent-fixture",
+      "anomaly": false,
+      "depth": 0,
+      "durationMs": null,
+      "id": "00000000-0000-4000-8000-000000000002",
+      "parentId": null,
+      "payload": {
+        "_type": "tool",
+        "args": {
+          "query": "x"
+        },
+        "errorMessage": null,
+        "latencyMs": 0.0,
+        "result": null,
+        "success": true,
+        "tokenCost": null,
+        "toolName": "search_web"
+      },
+      "runId": "11111111-1111-4111-8111-111111111111",
+      "salience": null,
+      "schemaVersion": "1.0",
+      "sessionId": "22222222-2222-4222-8222-222222222222",
+      "timestamp": 1700000000002,
+      "type": "tool.called"
+    },
+    {
+      "agentId": "agent-fixture",
+      "anomaly": false,
+      "depth": 0,
+      "durationMs": 42.5,
+      "id": "00000000-0000-4000-8000-000000000003",
+      "parentId": null,
+      "payload": {
+        "_type": "tool",
+        "args": {
+          "query": "x"
+        },
+        "errorMessage": null,
+        "latencyMs": 42.5,
+        "result": {
+          "hits": 3
+        },
+        "success": true,
+        "tokenCost": 120,
+        "toolName": "search_web"
+      },
+      "runId": "11111111-1111-4111-8111-111111111111",
+      "salience": null,
+      "schemaVersion": "1.0",
+      "sessionId": "22222222-2222-4222-8222-222222222222",
+      "timestamp": 1700000000003,
+      "type": "tool.returned"
+    },
+    {
+      "agentId": "agent-fixture",
+      "anomaly": false,
+      "depth": 0,
+      "durationMs": null,
+      "id": "00000000-0000-4000-8000-000000000004",
+      "parentId": null,
+      "payload": {
+        "_type": "memory",
+        "hitCount": 2,
+        "query": "prior",
+        "relevanceScores": [
+          0.9,
+          0.8
+        ],
+        "retrievalMs": 12.3,
+        "storageKey": "vec:1"
+      },
+      "runId": "11111111-1111-4111-8111-111111111111",
+      "salience": null,
+      "schemaVersion": "1.0",
+      "sessionId": "22222222-2222-4222-8222-222222222222",
+      "timestamp": 1700000000004,
+      "type": "memory.retrieved"
+    },
+    {
+      "agentId": "agent-fixture",
+      "anomaly": false,
+      "depth": 0,
+      "durationMs": null,
+      "id": "00000000-0000-4000-8000-000000000005",
+      "parentId": null,
+      "payload": {
+        "_type": "retry",
+        "attempt": 2,
+        "backoffMs": 500.0,
+        "maxAttempts": 3,
+        "previousError": "ECONNRESET",
+        "reason": "timeout"
+      },
+      "runId": "11111111-1111-4111-8111-111111111111",
+      "salience": null,
+      "schemaVersion": "1.0",
+      "sessionId": "22222222-2222-4222-8222-222222222222",
+      "timestamp": 1700000000005,
+      "type": "retry.triggered"
+    },
+    {
+      "agentId": "agent-fixture",
+      "anomaly": false,
+      "depth": 0,
+      "durationMs": null,
+      "id": "00000000-0000-4000-8000-000000000006",
+      "parentId": null,
+      "payload": {
+        "_type": "reflection",
+        "actionTaken": "a",
+        "confidence": 0.7,
+        "insight": "i",
+        "triggeredBy": "33333333-3333-4333-8333-333333333333"
+      },
+      "runId": "11111111-1111-4111-8111-111111111111",
+      "salience": null,
+      "schemaVersion": "1.0",
+      "sessionId": "22222222-2222-4222-8222-222222222222",
+      "timestamp": 1700000000006,
+      "type": "reflection.generated"
+    },
+    {
+      "agentId": "agent-fixture",
+      "anomaly": false,
+      "depth": 0,
+      "durationMs": null,
+      "id": "00000000-0000-4000-8000-000000000007",
+      "parentId": null,
+      "payload": {
+        "_type": "subagent",
+        "agentType": "research",
+        "childRunId": null,
+        "delegatedGoalId": "33333333-3333-4333-8333-333333333333",
+        "task": "t"
+      },
+      "runId": "11111111-1111-4111-8111-111111111111",
+      "salience": null,
+      "schemaVersion": "1.0",
+      "sessionId": "22222222-2222-4222-8222-222222222222",
+      "timestamp": 1700000000007,
+      "type": "subagent.spawned"
+    },
+    {
+      "agentId": "agent-fixture",
+      "anomaly": false,
+      "depth": 0,
+      "durationMs": null,
+      "id": "00000000-0000-4000-8000-000000000008",
+      "parentId": null,
+      "payload": {
+        "_type": "validation",
+        "checkName": "c",
+        "details": "ok",
+        "passed": true,
+        "severity": "info"
+      },
+      "runId": "11111111-1111-4111-8111-111111111111",
+      "salience": null,
+      "schemaVersion": "1.0",
+      "sessionId": "22222222-2222-4222-8222-222222222222",
+      "timestamp": 1700000000008,
+      "type": "validation.passed"
+    },
+    {
+      "agentId": "agent-fixture",
+      "anomaly": false,
+      "depth": 0,
+      "durationMs": null,
+      "id": "00000000-0000-4000-8000-000000000009",
+      "parentId": null,
+      "payload": {
+        "_type": "context",
+        "percentUsed": 93.75,
+        "tokenLimit": 8000,
+        "tokensUsed": 7500,
+        "truncatedMessages": 4
+      },
+      "runId": "11111111-1111-4111-8111-111111111111",
+      "salience": null,
+      "schemaVersion": "1.0",
+      "sessionId": "22222222-2222-4222-8222-222222222222",
+      "timestamp": 1700000000009,
+      "type": "context.truncated"
+    },
+    {
+      "agentId": "agent-fixture",
+      "anomaly": false,
+      "depth": 0,
+      "durationMs": null,
+      "id": "00000000-0000-4000-8000-00000000000a",
+      "parentId": null,
+      "payload": {
+        "_type": "reasoning",
+        "modelId": "gpt-4o-mini",
+        "rawText": null,
+        "summary": "s",
+        "tokensUsed": 230
+      },
+      "runId": "11111111-1111-4111-8111-111111111111",
+      "salience": null,
+      "schemaVersion": "1.0",
+      "sessionId": "22222222-2222-4222-8222-222222222222",
+      "timestamp": 1700000000010,
+      "type": "reasoning.extracted"
+    },
+    {
+      "agentId": "agent-fixture",
+      "anomaly": false,
+      "depth": 0,
+      "durationMs": null,
+      "id": "00000000-0000-4000-8000-00000000000b",
+      "parentId": null,
+      "payload": {
+        "_type": "planner",
+        "plan": "p",
+        "revision": 0,
+        "step": 1,
+        "totalSteps": 3
+      },
+      "runId": "11111111-1111-4111-8111-111111111111",
+      "salience": null,
+      "schemaVersion": "1.0",
+      "sessionId": "22222222-2222-4222-8222-222222222222",
+      "timestamp": 1700000000011,
+      "type": "planner.updated"
+    },
+    {
+      "agentId": "agent-fixture",
+      "anomaly": true,
+      "depth": 0,
+      "durationMs": null,
+      "id": "00000000-0000-4000-8000-00000000000c",
+      "parentId": null,
+      "payload": {
+        "_type": "generic",
+        "data": {
+          "note": "fallback"
+        }
+      },
+      "runId": "11111111-1111-4111-8111-111111111111",
+      "salience": 0.42,
+      "schemaVersion": "1.0",
+      "sessionId": "22222222-2222-4222-8222-222222222222",
+      "timestamp": 1700000000012,
+      "type": "goal.completed"
+    }
+  ],
+  "generatedBy": "reverie-schema (Python)",
+  "run": {
+    "agentId": "agent-fixture",
+    "completedAt": 1700000001000,
+    "createdAt": 1700000000000,
+    "goal": "Research observability",
+    "id": "11111111-1111-4111-8111-111111111111",
+    "pinned": false,
+    "runtime": "openai-agents",
+    "sessionId": "22222222-2222-4222-8222-222222222222",
+    "startedAt": 1700000000000,
+    "status": "completed",
+    "tags": [
+      "research"
+    ],
+    "totalEvents": 12,
+    "totalRetries": 1,
+    "totalSubagents": 1,
+    "totalTokens": 4500,
+    "totalToolCalls": 3
+  },
+  "runCreate": {
+    "agentId": "agent-fixture",
+    "goal": "Research observability",
+    "runId": "11111111-1111-4111-8111-111111111111",
+    "runtime": "openai-agents",
+    "sessionId": "22222222-2222-4222-8222-222222222222",
+    "startedAt": 1700000000000
+  },
+  "runUpdate": {
+    "completedAt": 1700000001000,
+    "status": "completed"
+  },
+  "schemaVersion": "1.0"
+}
