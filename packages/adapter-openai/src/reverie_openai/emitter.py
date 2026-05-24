@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import queue
+import sys
 import threading
 from typing import Any
 
@@ -167,14 +168,107 @@ class Emitter:
         future.cancel()
 
     def shutdown(self, timeout: float = 5.0) -> None:
-        """Flush and stop the background thread. Idempotent."""
+        """Flush and stop the background thread. Idempotent.
+
+        Drains remaining queued items synchronously so we don't depend on the
+        daemon thread surviving Python's exit. Daemon threads are killed
+        immediately on interpreter shutdown — atexit alone is not enough.
+        """
 
         if self._thread is None:
             return
+
+        # First, signal the worker to stop. It will drain any items it can
+        # before observing the shutdown sentinel.
         self._enqueue(("shutdown", None))
         self._thread.join(timeout=timeout)
+
+        # Then synchronously drain anything that didn't make it. Even a fast
+        # daemon thread can lose the race against process exit on Windows.
+        self._sync_drain_remaining()
+
         self._thread = None
         self._loop = None
+
+    def _sync_drain_remaining(self) -> None:
+        """Drain queued items using a synchronous ``httpx.Client``.
+
+        Called from the main thread during shutdown, after the daemon thread
+        has had a chance to do its work. This guarantees that any items still
+        in the queue make it to the backend before the process exits — the
+        daemon thread's async loop can't be relied on past Python shutdown.
+        """
+
+        # Pull what's left out of the queue.
+        leftover_events: list[CognitiveEvent] = []
+        leftover_other: list[Any] = []
+        while True:
+            try:
+                item = self._queue.get_nowait()
+            except queue.Empty:
+                break
+            if item[0] == "event":
+                leftover_events.append(item[1])
+            elif item[0] in {"flush", "shutdown"}:
+                # Flush waiters — set them so any blocked caller unblocks.
+                if item[0] == "flush":
+                    try:
+                        item[1].set()
+                    except Exception:
+                        pass
+            else:
+                leftover_other.append(item)
+
+        if not leftover_events and not leftover_other:
+            return
+
+        # Use a SHORT-timeout sync client. We have at most a few seconds
+        # before the process really has to exit.
+        try:
+            with httpx.Client(
+                base_url=self._config.backend_url,
+                timeout=httpx.Timeout(self._config.request_timeout_seconds),
+                headers=self._config.extra_headers or None,
+            ) as client:
+                # Run-creates and run-updates first (so events have a parent
+                # run on the backend).
+                run_creates = [it for it in leftover_other if it[0] == "run_create"]
+                run_updates = [it for it in leftover_other if it[0] == "run_update"]
+                for it in run_creates:
+                    self._sync_request(client, "POST", "/api/v1/runs", it[1])
+                if leftover_events:
+                    body = [e.model_dump(by_alias=True) for e in leftover_events]
+                    if self._sync_request(
+                        client, "POST", "/api/v1/events/batch", body
+                    ):
+                        self.posted_count += len(leftover_events)
+                for it in run_updates:
+                    run_id, body = it[1]
+                    self._sync_request(client, "PATCH", f"/api/v1/runs/{run_id}", body)
+        except Exception:
+            # Truly defensive — never let shutdown raise.
+            self.failed_count += 1
+
+    def _sync_request(
+        self,
+        client: httpx.Client,
+        method: str,
+        path: str,
+        body: Any,
+    ) -> bool:
+        """Synchronous variant of ``_safe_request``. Never raises."""
+
+        try:
+            resp = client.request(method, path, json=body)
+        except Exception as exc:
+            self._record_failure(f"{method} {path}: {type(exc).__name__}: {exc}")
+            return False
+        if 200 <= resp.status_code < 300:
+            return True
+        self._record_failure(
+            f"{method} {path}: HTTP {resp.status_code} {resp.text[:200]}"
+        )
+        return False
 
     # ---------------------------------------------------------------- consumer
 
