@@ -7,6 +7,7 @@ import { Sphere } from "@react-three/drei";
 
 import { OrbLabel } from "@/components/scene/orb-label";
 import { radiusFromSalience, visualFor } from "@/lib/colors";
+import { useExplorerStore } from "@/lib/store";
 import type { GraphNode, ZoomLevel } from "@/lib/types";
 
 /**
@@ -95,6 +96,21 @@ export function Orb({
   const radius = radiusFromSalience(baseRadius, node.salience);
   const [hovered, setHovered] = useState(false);
 
+  // What annotations does this node have? Only the highest-priority one
+  // shapes the visual treatment (avoid > focus > done > note).
+  const annotations = useExplorerStore(
+    (s) => s.annotationsByNode.get(node.id) ?? null,
+  );
+  const dominantAnnotation = useMemo(() => {
+    if (!annotations || annotations.length === 0) return null;
+    const order = ["avoid", "focus", "done", "note"] as const;
+    for (const k of order) {
+      const a = annotations.find((x) => x.kind === k);
+      if (a) return a;
+    }
+    return annotations[0];
+  }, [annotations]);
+
   // Pulse strength: failed orbs breathe most, then critical-path, then anomalies.
   const pulse = useMemo(() => {
     if (node.type.endsWith(".failed")) return 1.0;
@@ -142,12 +158,16 @@ export function Orb({
   // Body — opaque, low emissive. Bloom handles outward propagation.
   const bodyMaterial = useMemo(() => {
     const baseColor = visual.color;
+    // ``avoid`` annotation dims the body so it visually recedes — the user
+    // told us this branch is a dead end, so we don't want it competing for
+    // attention with active orbs.
+    const dim = dominantAnnotation?.kind === "avoid" ? 0.25 : 1.0;
     return new THREE.MeshStandardMaterial({
-      color: baseColor,
+      color: baseColor.clone().multiplyScalar(dim),
       emissive: baseColor,
       // Much lower emissive intensity — was 1.4, now 0.55. Stops the orb
       // from bleeding into a halo cloud.
-      emissiveIntensity: visual.glow * 0.55,
+      emissiveIntensity: visual.glow * 0.55 * dim,
       roughness: 0.45,
       metalness: 0.0,
       transparent: false,
@@ -155,7 +175,7 @@ export function Orb({
       // contribute extra bloom. Halo is the only thing that pushes past 1.0.
       toneMapped: true,
     });
-  }, [visual.color, visual.glow]);
+  }, [visual.color, visual.glow, dominantAnnotation?.kind]);
 
   // Smooth lerp scale + halo intensity in useFrame so transitions feel buttery.
   const groupRef = useRef<THREE.Group>(null);
@@ -250,6 +270,19 @@ export function Orb({
         </mesh>
       )}
 
+      {/* Annotation ring — visible whenever the user has tagged this orb. */}
+      {dominantAnnotation && (
+        <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={3}>
+          <torusGeometry args={[radius * 1.95, 0.16, 16, 96]} />
+          <meshBasicMaterial
+            color={ANNOTATION_RING_COLORS[dominantAnnotation.kind]}
+            transparent
+            opacity={0.85}
+            toneMapped={false}
+          />
+        </mesh>
+      )}
+
       <OrbLabel
         node={node}
         offset={labelOffset}
@@ -264,6 +297,13 @@ export function Orb({
 // Label visibility — encodes the SRS-style "show fewer labels at higher
 // detail" rule.
 // ---------------------------------------------------------------------------
+
+const ANNOTATION_RING_COLORS: Record<string, string> = {
+  avoid: "#fb7185",   // rose-400 — "stop"
+  focus: "#fbbf24",   // amber-400 — "look here"
+  done:  "#34d399",   // emerald-400 — "complete"
+  note:  "#7dd3fc",   // sky-300 — "info"
+};
 
 function computeLabelVisibility({
   node,

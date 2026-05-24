@@ -10,7 +10,7 @@ import { RunStats } from "@/components/hud/run-stats";
 import { ViewControls } from "@/components/hud/view-controls";
 import { ZoomSelector } from "@/components/hud/zoom-selector";
 import { Scene } from "@/components/scene/scene";
-import { getRun, getSalienceGraph } from "@/lib/api";
+import { getRun, getSalienceGraph, listAnnotations } from "@/lib/api";
 import { layoutGraph, type LaidOutGraph } from "@/lib/layout";
 import { useExplorerStore } from "@/lib/store";
 import type { GraphBundle, Run } from "@/lib/types";
@@ -27,6 +27,7 @@ export function Explorer({ runId }: ExplorerProps) {
 
   const zoomLevel = useExplorerStore((s) => s.zoomLevel);
   const hideNoise = useExplorerStore((s) => s.hideNoise);
+  const setAnnotations = useExplorerStore((s) => s.setAnnotations);
 
   // Fetch run metadata (stable across zoom changes).
   useEffect(() => {
@@ -40,6 +41,20 @@ export function Explorer({ runId }: ExplorerProps) {
       cancelled = true;
     };
   }, [runId]);
+
+  // Fetch annotations for this run (one-shot — refresh by re-mounting).
+  useEffect(() => {
+    let cancelled = false;
+    listAnnotations(runId)
+      .then((resp) => !cancelled && setAnnotations(resp.items))
+      .catch(() => {
+        // Annotations endpoint missing? Treat as none — non-fatal.
+        if (!cancelled) setAnnotations([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [runId, setAnnotations]);
 
   // Fetch the salience-scored graph each time zoom or noise filter changes.
   useEffect(() => {
