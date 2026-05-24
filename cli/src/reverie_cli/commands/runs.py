@@ -129,7 +129,7 @@ def show_run(
     console.print(f"  session:    {run['sessionId']}")
     console.print(f"  agent:      {run['agentId']}")
     console.print(f"  runtime:    {run['runtime']}")
-    console.print(f"  goal:       {run.get('goal') or '—'}")
+    console.print(f"  goal:       {run.get('goal') or '-'}")
     console.print(f"  status:     {run['status']}")
     console.print(f"  started:    {format_timestamp_ms(run['startedAt'])}")
     console.print(f"  duration:   {format_duration_ms(duration_ms)}")

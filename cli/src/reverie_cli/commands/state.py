@@ -133,7 +133,7 @@ def _render_state(console, state: dict) -> None:
                 f"  {status:>4} [cyan]{r['toolName']}[/cyan] "
                 f"({format_duration_ms(r['latencyMs'])}) "
                 f"[dim]@ {format_timestamp_ms(r['finishedAt'])}[/dim]"
-                + (f" — {r['errorMessage']}" if r.get("errorMessage") else "")
+                + (f" -- {r['errorMessage']}" if r.get("errorMessage") else "")
             )
 
     if state.get("lastReasoningSummary"):
