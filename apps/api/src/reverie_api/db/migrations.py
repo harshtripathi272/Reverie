@@ -79,8 +79,33 @@ async def _migration_001_initial_schema(conn: aiosqlite.Connection) -> None:
     )
 
 
+async def _migration_002_run_checkpoints(conn: aiosqlite.Connection) -> None:
+    """Create the ``run_checkpoints`` table for the snapshot engine.
+
+    Each row is a fully-folded :class:`RunState` JSON at a specific
+    ``event_count`` for a run. The engine creates these lazily on replay so
+    ingestion stays in the < 5ms p50 budget.
+    """
+
+    await conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS run_checkpoints (
+            run_id      TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+            event_count INTEGER NOT NULL,
+            state_json  TEXT NOT NULL,
+            created_at  INTEGER NOT NULL,
+            PRIMARY KEY (run_id, event_count)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_run_checkpoints_run_id_count
+          ON run_checkpoints(run_id, event_count);
+        """
+    )
+
+
 MIGRATIONS: list[Migration] = [
     _migration_001_initial_schema,
+    _migration_002_run_checkpoints,
 ]
 
 

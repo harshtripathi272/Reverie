@@ -13,6 +13,7 @@ from reverie_cli import __version__
 from reverie_cli.commands.replay import replay_command
 from reverie_cli.commands.run import run_command
 from reverie_cli.commands.runs import runs_group
+from reverie_cli.commands.state import state_command
 from reverie_cli.commands.status import status_command
 
 
@@ -29,6 +30,7 @@ def cli() -> None:
 cli.add_command(run_command)
 cli.add_command(status_command)
 cli.add_command(replay_command)
+cli.add_command(state_command)
 cli.add_command(runs_group)
 
 

@@ -21,6 +21,8 @@ from reverie_api.db.errors import (
     RunPinnedError,
 )
 from reverie_api.models import ErrorBody
+from reverie_api.routes.replay import NoFailuresError
+from reverie_api.snapshot.engine import SnapshotNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -75,4 +77,30 @@ def install_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=409,
             content=_body("duplicate_event", str(exc), ctx),
+        )
+
+    @app.exception_handler(SnapshotNotFoundError)
+    async def _snapshot_not_found(_: Request, exc: SnapshotNotFoundError) -> JSONResponse:
+        return JSONResponse(
+            status_code=404,
+            content=_body(
+                "snapshot_out_of_range",
+                str(exc),
+                {
+                    "runId": exc.run_id,
+                    "requested": exc.requested,
+                    "available": exc.available,
+                },
+            ),
+        )
+
+    @app.exception_handler(NoFailuresError)
+    async def _no_failures(_: Request, exc: NoFailuresError) -> JSONResponse:
+        return JSONResponse(
+            status_code=404,
+            content=_body(
+                "no_failures",
+                str(exc),
+                {"runId": exc.run_id},
+            ),
         )

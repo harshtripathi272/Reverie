@@ -148,10 +148,10 @@ def tool_returned_event(run_id: str, *, token_cost: int = 100, **overrides) -> d
     )
 
 
-def retry_event(run_id: str, **overrides) -> dict:
+def retry_event(run_id: str, *, event_type: str = "retry.triggered", **overrides) -> dict:
     return make_event(
         run_id,
-        event_type="retry.triggered",
+        event_type=event_type,
         payload={
             "_type": "retry",
             "reason": "timeout",
