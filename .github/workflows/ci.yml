@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Don't pile up runs on the same branch.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Create venv and install packages
+        run: |
+          uv venv .venv --python 3.12
+          uv pip install --python .venv/bin/python -e "packages/schema-py[dev]"
+          uv pip install --python .venv/bin/python -e "packages/adapter-openai[dev]"
+          uv pip install --python .venv/bin/python -e "apps/api[dev]"
+          uv pip install --python .venv/bin/python -e "cli[dev]"
+
+      - name: Generate cross-language fixtures
+        run: .venv/bin/python packages/schema-py/scripts/emit_fixtures.py
+
+      - name: Run pytest
+        run: .venv/bin/python -m pytest -q --no-header
+
+  typescript-schema:
+    name: TypeScript schema tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - name: Set up Python (for fixtures)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Generate cross-language fixtures
+        run: |
+          uv venv .venv --python 3.12
+          uv pip install --python .venv/bin/python -e "packages/schema-py[dev]"
+          .venv/bin/python packages/schema-py/scripts/emit_fixtures.py
+
+      - name: Install JS deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build schema package
+        run: pnpm -C packages/schema build
+
+      - name: Test schema package
+        run: pnpm -C packages/schema test --reporter=basic
+
+  web-app:
+    name: Web app build + typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - name: Install JS deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm -C apps/web typecheck
+
+      - name: Build
+        run: pnpm -C apps/web build

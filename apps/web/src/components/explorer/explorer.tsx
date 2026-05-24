@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Header } from "@/components/hud/header";
-import { ZoomSelector } from "@/components/hud/zoom-selector";
+import { Legend } from "@/components/hud/legend";
+import { LoadingOverlay } from "@/components/hud/loading-overlay";
 import { NodeDetailPanel } from "@/components/hud/node-detail";
 import { RunStats } from "@/components/hud/run-stats";
+import { ViewControls } from "@/components/hud/view-controls";
+import { ZoomSelector } from "@/components/hud/zoom-selector";
 import { Scene } from "@/components/scene/scene";
 import { getRun, getSalienceGraph } from "@/lib/api";
 import { layoutGraph, type LaidOutGraph } from "@/lib/layout";
@@ -20,6 +23,7 @@ export function Explorer({ runId }: ExplorerProps) {
   const [run, setRun] = useState<Run | null>(null);
   const [bundle, setBundle] = useState<GraphBundle | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [graphLoading, setGraphLoading] = useState(true);
 
   const zoomLevel = useExplorerStore((s) => s.zoomLevel);
   const hideNoise = useExplorerStore((s) => s.hideNoise);
@@ -41,16 +45,24 @@ export function Explorer({ runId }: ExplorerProps) {
   useEffect(() => {
     let cancelled = false;
     setBundle(null);
+    setGraphLoading(true);
     getSalienceGraph(runId, { level: zoomLevel, hideNoise })
-      .then((g) => !cancelled && setBundle(g))
-      .catch((e) => !cancelled && setError(e?.message ?? String(e)));
+      .then((g) => {
+        if (cancelled) return;
+        setBundle(g);
+        setGraphLoading(false);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setError(e?.message ?? String(e));
+        setGraphLoading(false);
+      });
     return () => {
       cancelled = true;
     };
   }, [runId, zoomLevel, hideNoise]);
 
-  // Re-run the layout whenever the graph changes. Memoized so prop-stable
-  // for the scene.
+  // Re-run the layout whenever the graph changes.
   const layout: LaidOutGraph | null = useMemo(
     () => (bundle ? layoutGraph(bundle) : null),
     [bundle],
@@ -78,24 +90,31 @@ export function Explorer({ runId }: ExplorerProps) {
               )
             }
             right={
-              <span className="text-xs text-zinc-500">
-                {bundle ? `${bundle.summary.totalNodes} nodes` : "loading…"}
-              </span>
+              <div className="pointer-events-auto flex items-center gap-3">
+                <span className="text-xs text-zinc-500">
+                  {bundle
+                    ? `${bundle.summary.totalNodes} nodes`
+                    : "loading…"}
+                </span>
+                <ViewControls />
+              </div>
             }
           />
         </div>
 
-        <div className="flex flex-1">
-          {/* Left rail — currently a placeholder for replay controls. */}
-          <div className="hidden w-64 lg:block" />
-
-          <div className="flex flex-1 flex-col items-end justify-between p-4">
-            {/* Top-right: stats pill. */}
+        <div className="flex flex-1 flex-col justify-between p-4">
+          {/* Top row: stats top-right. */}
+          <div className="flex items-start justify-end">
             <div className="pointer-events-auto">
               {bundle && <RunStats bundle={bundle} />}
             </div>
+          </div>
 
-            {/* Bottom-right: zoom selector. */}
+          {/* Bottom row: legend on the left, zoom selector on the right. */}
+          <div className="flex items-end justify-between gap-3">
+            <div className="pointer-events-auto">
+              <Legend />
+            </div>
             <div className="pointer-events-auto">
               <ZoomSelector />
             </div>
@@ -108,10 +127,17 @@ export function Explorer({ runId }: ExplorerProps) {
         {bundle && <NodeDetailPanel bundle={bundle} />}
       </div>
 
-      {/* Loading / error states overlay. */}
+      {/* Loading overlay — only shown while we're waiting for the first
+          graph payload. Subsequent zoom-level switches don't re-trigger it
+          so the experience feels snappy. */}
+      {graphLoading && !bundle && !error && (
+        <LoadingOverlay message="Reconstructing cognition..." />
+      )}
+
+      {/* Error overlay. */}
       {error && (
         <div className="pointer-events-auto absolute left-1/2 top-1/2 z-30 w-[28rem] -translate-x-1/2 -translate-y-1/2">
-          <div className="glass p-5 text-sm text-rose-300">
+          <div className="glass-strong p-5 text-sm text-rose-300">
             <strong>Could not load run.</strong>
             <p className="mt-1 text-zinc-400">{error}</p>
           </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import {
   Bloom,
@@ -65,7 +65,7 @@ export function Scene({ bundle, layout }: SceneProps) {
         <SceneContent bundle={bundle} layout={layout} />
       )}
 
-      <CameraRig hasContent={!!bundle} />
+      <CameraRig hasContent={!!bundle} layout={layout} />
 
       {/*
         Post-processing pipeline:
@@ -101,6 +101,7 @@ function SceneContent({
 }) {
   const selectedNodeId = useExplorerStore((s) => s.selectedNodeId);
   const setSelectedNodeId = useExplorerStore((s) => s.setSelectedNodeId);
+  const zoomLevel = useExplorerStore((s) => s.zoomLevel);
 
   const nodeById = useMemo(
     () => new Map(bundle.nodes.map((n) => [n.id, n])),
@@ -136,6 +137,7 @@ function SceneContent({
             node={node}
             position={pos}
             selected={selectedNodeId === node.id}
+            zoomLevel={zoomLevel}
             onClick={(id) => {
               setSelectedNodeId(id === selectedNodeId ? null : id);
             }}
@@ -147,45 +149,127 @@ function SceneContent({
 }
 
 // ---------------------------------------------------------------------------
-// CameraRig — damped orbit + auto-frame on first content.
+// CameraRig — damped orbit + auto-frame on first content + reset/frame
+// commands triggered from the HUD.
 // ---------------------------------------------------------------------------
 
-function CameraRig({ hasContent }: { hasContent: boolean }) {
+function CameraRig({
+  hasContent,
+  layout,
+}: {
+  hasContent: boolean;
+  layout: LaidOutGraph | null;
+}) {
   const { camera } = useThree();
   const controlsRef = useRef<any>(null);
   const framedOnceRef = useRef(false);
+  const targetPosRef = useRef<THREE.Vector3 | null>(null);
+  const targetLookRef = useRef<THREE.Vector3 | null>(null);
 
-  // When content arrives the first time, gently dolly to a flattering position.
+  const cameraResetTick = useExplorerStore((s) => s.cameraResetTick);
+  const frameSelectedTick = useExplorerStore((s) => s.frameSelectedTick);
+  const selectedNodeId = useExplorerStore((s) => s.selectedNodeId);
+
+  // Helper: compute a flattering camera frame for the whole layout.
+  const computeFitFrame = () => {
+    if (!layout || layout.nodes.length === 0) return null;
+    const box = new THREE.Box3();
+    for (const n of layout.nodes) {
+      box.expandByPoint(new THREE.Vector3(n.x, n.y, n.z));
+    }
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z, 80);
+    // Pull the camera back proportional to the largest dimension.
+    const distance = maxDim * 1.6 + 80;
+    const pos = new THREE.Vector3(
+      center.x + distance * 0.3,
+      center.y + distance * 0.4,
+      center.z + distance,
+    );
+    return { pos, look: center };
+  };
+
+  // First frame on layout load.
   useEffect(() => {
     if (!hasContent || framedOnceRef.current) return;
     framedOnceRef.current = true;
-    // Reset camera to a stable starting frame; OrbitControls.update() will
-    // pick up the new target.
-    camera.position.set(0, 80, 360);
-    camera.lookAt(0, 0, 0);
-    controlsRef.current?.update();
-  }, [hasContent, camera]);
+    const frame = computeFitFrame();
+    if (frame) {
+      targetPosRef.current = frame.pos;
+      targetLookRef.current = frame.look;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasContent, layout]);
+
+  // Reset camera command from the HUD.
+  useEffect(() => {
+    if (cameraResetTick === 0) return;
+    const frame = computeFitFrame();
+    if (frame) {
+      targetPosRef.current = frame.pos;
+      targetLookRef.current = frame.look;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cameraResetTick]);
+
+  // Frame the selected node — fly camera so it's centered + close.
+  useEffect(() => {
+    if (frameSelectedTick === 0 || !selectedNodeId || !layout) return;
+    const node = layout.nodes.find((n) => n.id === selectedNodeId);
+    if (!node) return;
+    const center = new THREE.Vector3(node.x, node.y, node.z);
+    const distance = 90;
+    targetPosRef.current = new THREE.Vector3(
+      center.x + distance * 0.4,
+      center.y + distance * 0.5,
+      center.z + distance,
+    );
+    targetLookRef.current = center;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frameSelectedTick]);
+
+  // Smoothly lerp the camera + orbit target toward whatever was requested.
+  useFrame((_, delta) => {
+    if (!controlsRef.current) return;
+    if (targetPosRef.current) {
+      const t = 1 - Math.exp(-delta * 3);
+      camera.position.lerp(targetPosRef.current, t);
+      // Snap-stop once close enough.
+      if (camera.position.distanceTo(targetPosRef.current) < 0.4) {
+        camera.position.copy(targetPosRef.current);
+        targetPosRef.current = null;
+      }
+    }
+    if (targetLookRef.current) {
+      const t = 1 - Math.exp(-delta * 3);
+      const cur = controlsRef.current.target as THREE.Vector3;
+      cur.lerp(targetLookRef.current, t);
+      if (cur.distanceTo(targetLookRef.current) < 0.4) {
+        cur.copy(targetLookRef.current);
+        targetLookRef.current = null;
+      }
+      controlsRef.current.update();
+    }
+  });
 
   return (
     <OrbitControls
       ref={controlsRef}
       makeDefault
-      // Damping = the secret sauce of "smooth as hell".
       enableDamping
       dampingFactor={0.07}
       rotateSpeed={0.6}
       panSpeed={0.6}
       zoomSpeed={0.8}
       minDistance={20}
-      maxDistance={2000}
-      // Don't constrain vertical rotation — let the user fly anywhere.
+      maxDistance={3000}
       minPolarAngle={0}
       maxPolarAngle={Math.PI}
-      // Right-click to pan, left to rotate, scroll to zoom.
       mouseButtons={{
-        LEFT: 0, // ROTATE
-        MIDDLE: 1, // DOLLY (zoom)
-        RIGHT: 2, // PAN
+        LEFT: 0,
+        MIDDLE: 1,
+        RIGHT: 2,
       }}
     />
   );
