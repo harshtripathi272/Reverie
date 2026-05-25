@@ -45,6 +45,7 @@ interface OrbProps {
   node: GraphNode;
   position: THREE.Vector3;
   selected?: boolean;
+  inMultiSelection?: boolean;
   zoomLevel: ZoomLevel;
   onPointerDownNode?: (id: string, event: any) => void;
 }
@@ -88,6 +89,7 @@ export function Orb({
   node,
   position,
   selected = false,
+  inMultiSelection = false,
   zoomLevel,
   onPointerDownNode,
 }: OrbProps) {
@@ -265,6 +267,20 @@ export function Orb({
             color={visual.hex}
             transparent
             opacity={0.95}
+            toneMapped={false}
+          />
+        </mesh>
+      )}
+
+      {/* Multi-select ring — thinner + cyan, drawn outside the selection
+          ring so both can show simultaneously. */}
+      {inMultiSelection && !selected && (
+        <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={2}>
+          <torusGeometry args={[radius * 1.55, 0.09, 12, 64]} />
+          <meshBasicMaterial
+            color="#22d3ee"
+            transparent
+            opacity={0.85}
             toneMapped={false}
           />
         </mesh>

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Header } from "@/components/hud/header";
 import { Legend } from "@/components/hud/legend";
 import { LoadingOverlay } from "@/components/hud/loading-overlay";
+import { MultiSelectToolbar } from "@/components/hud/multi-select-toolbar";
 import { NodeDetailPanel } from "@/components/hud/node-detail";
 import { RunStats } from "@/components/hud/run-stats";
 import { ViewControls } from "@/components/hud/view-controls";
@@ -130,7 +131,11 @@ export function Explorer({ runId }: ExplorerProps) {
             <div className="pointer-events-auto">
               <Legend />
             </div>
-            <div className="pointer-events-auto">
+            <div className="pointer-events-auto flex flex-col items-end gap-2">
+              {/* Multi-select toolbar floats just above the zoom selector
+                  so the user sees their bulk-action options without losing
+                  view of the scene. */}
+              <MultiSelectToolbar runId={runId} />
               <ZoomSelector />
             </div>
           </div>

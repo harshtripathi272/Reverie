@@ -95,6 +95,9 @@ interface DragState {
   // Distance the pointer has moved since pointer-down — used to distinguish
   // a click from a drag.
   travelled: number;
+  // Whether shift was held at pointer-down. On click-up we'll either
+  // toggle the node in the multi-select set (shift) or replace selection.
+  shift: boolean;
 }
 
 const CLICK_VS_DRAG_THRESHOLD = 4; // world units
@@ -107,6 +110,7 @@ function SceneContent({
   layout: LaidOutGraph;
 }) {
   const selectedNodeId = useExplorerStore((s) => s.selectedNodeId);
+  const selectedNodeIds = useExplorerStore((s) => s.selectedNodeIds);
   const setSelectedNodeId = useExplorerStore((s) => s.setSelectedNodeId);
   const zoomLevel = useExplorerStore((s) => s.zoomLevel);
   const { camera, gl } = useThree();
@@ -154,6 +158,7 @@ function SceneContent({
       plane,
       offset,
       travelled: 0,
+      shift: e.shiftKey,
     };
 
     // Capture the pointer so we keep getting events when the cursor
@@ -211,11 +216,15 @@ function SceneContent({
       // If they barely moved, treat it as a click → toggle selection.
       if (drag.travelled < CLICK_VS_DRAG_THRESHOLD) {
         const id = drag.nodeId;
-        // Use the latest store snapshot, not the captured value.
-        const current = useExplorerStore.getState().selectedNodeId;
-        useExplorerStore
-          .getState()
-          .setSelectedNodeId(current === id ? null : id);
+        const store = useExplorerStore.getState();
+        if (drag.shift) {
+          // Shift-click → toggle this node in the multi-select set.
+          store.toggleNodeInSelection(id);
+        } else {
+          // Plain click → replace selection (or deselect if same).
+          const current = store.selectedNodeId;
+          store.setSelectedNodeId(current === id ? null : id);
+        }
       }
 
       dragRef.current = null;
@@ -269,6 +278,7 @@ function SceneContent({
             node={node}
             position={pos}
             selected={selectedNodeId === node.id}
+            inMultiSelection={selectedNodeIds.has(node.id)}
             zoomLevel={zoomLevel}
             onPointerDownNode={onPointerDownNode}
           />
