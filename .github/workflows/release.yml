@@ -231,7 +231,14 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: artifacts/wheels
+          # Use username/password (API token) instead of OIDC trusted
+          # publishing — we don't have pending publishers configured for
+          # all five packages yet.
+          user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
+          # Explicitly turn attestations off so the action doesn't try to
+          # use OIDC anyway.
+          attestations: false
           # Don't fail the whole release if PyPI is flaky — the GitHub
           # Release with binaries is already up.
           skip-existing: true
