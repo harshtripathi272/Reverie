@@ -20,7 +20,8 @@ on:
 
 permissions:
   contents: write
-  id-token: write
+  # We use a PYPI_API_TOKEN repo secret rather than OIDC trusted publishing,
+  # so we don't need ``id-token: write`` here.
 
 jobs:
   # ---------------------------------------------------------------- wheels
@@ -230,3 +231,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: artifacts/wheels
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          # Don't fail the whole release if PyPI is flaky — the GitHub
+          # Release with binaries is already up.
+          skip-existing: true
