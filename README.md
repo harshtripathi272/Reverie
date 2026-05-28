@@ -827,7 +827,7 @@ explicitly request an AI summary (which calls the Claude API).
 | Framework | Status |
 |---|---|
 | **OpenAI Agents SDK** | Fully supported (auto-inject via `reverie run`) |
-| **LangGraph** | On the roadmap |
+| **LangGraph** | On the roadmap | instructions 
 | **CrewAI** | On the roadmap |
 | **AutoGen** | On the roadmap |
 | **MCP** | On the roadmap |
