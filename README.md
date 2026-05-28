@@ -7,6 +7,7 @@
 *Chrome DevTools for AI agents. OpenTelemetry for agent cognition.*
 
 [![tests](https://img.shields.io/badge/tests-431%20green-22c55e.svg)](#testing)
+[![PyPI](https://img.shields.io/pypi/v/reverie-obs.svg?color=blue)](https://pypi.org/project/reverie-obs/)
 [![python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org)
 [![node](https://img.shields.io/badge/node-20%2B-339933.svg)](https://nodejs.org)
 [![license](https://img.shields.io/badge/license-MIT-purple.svg)](LICENSE)
@@ -139,18 +140,38 @@ chmod +x reverie-linux-x64
 No Python, no Node, no pnpm. The binary bundles the entire stack —
 backend, adapter, CLI, and the 3D explorer — into one file. ~30 MB.
 
-**2. PyPI install (recommended for Python users)**
+**2. PyPI install — the Python way (recommended)**
 
 ```bash
+# As a CLI tool (gets you `reverie start`, `reverie run`, etc):
 pipx install reverie-obs
-reverie start
+
+# As a library to import in your own project:
+pip install reverie-obs
 ```
 
-The `pipx` install gives you `reverie` on your PATH, with the 3D
-explorer bundled in (no Node toolchain needed). Use `pip install reverie-obs`
-if you'd rather install into your project's venv.
+```python
+# Then in your code (works with Gemini, Claude, OpenAI direct, anything):
+from reverie_obs import ReverieClient
 
-**3. From source (for development)**
+rev = ReverieClient(agent_id="my-bot", runtime="gemini")
+rev.start_run(goal="Whatever your agent does")
+# ... emit events as your agent runs ...
+rev.complete_run()
+```
+
+The `reverie-obs` package on PyPI is a meta-package that pulls in the
+backend, the OpenAI Agents SDK adapter, the CLI, and the schema. It also
+exports `ReverieClient` directly so you can instrument any framework with
+one import.
+
+**Other PyPI packages** (install individually if you want a smaller surface):
+- `pip install reverie-cli` — just the `reverie` CLI
+- `pip install reverie-api` — just the FastAPI backend
+- `pip install reverie-adapter-openai` — just the OpenAI Agents SDK adapter
+- `pip install reverie-schema` — just the 22 event types (Pydantic models)
+
+**3. From source (for development on Reverie itself)**
 
 ```bash
 git clone https://github.com/harshtripathi272/Reverie.git
