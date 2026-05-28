@@ -157,6 +157,25 @@ class ReverieClient:
             },
         )
 
+    def goal_failed(
+        self,
+        *,
+        parent_id: str | None = None,
+        reason: str = "",
+    ) -> str | None:
+        """Emit ``goal.failed`` — produces a red orb."""
+
+        return self._emit_event(
+            "goal.failed",
+            parent_id=parent_id,
+            payload={
+                "_type": "goal",
+                "intent": reason or "failed",
+                "priority": "high",
+                "context": "",
+            },
+        )
+
     def tool_called(
         self,
         tool_name: str,
@@ -283,6 +302,44 @@ class ReverieClient:
                 "_type": "reflection",
                 "insight": insight,
                 "confidence": 0.8,
+            },
+        )
+
+    def subagent_spawned(
+        self,
+        agent_type: str,
+        task: str,
+        *,
+        parent_id: str | None = None,
+    ) -> str | None:
+        """Emit ``subagent.spawned`` — a helper agent gets delegated to."""
+
+        return self._emit_event(
+            "subagent.spawned",
+            parent_id=parent_id,
+            payload={
+                "_type": "subagent",
+                "agentType": agent_type,
+                "task": task,
+                "delegatedGoalId": None,
+                "childRunId": None,
+            },
+        )
+
+    def error(
+        self,
+        message: str,
+        *,
+        parent_id: str | None = None,
+    ) -> str | None:
+        """Emit ``error.occurred``."""
+
+        return self._emit_event(
+            "error.occurred",
+            parent_id=parent_id,
+            payload={
+                "_type": "generic",
+                "data": {"error": message},
             },
         )
 

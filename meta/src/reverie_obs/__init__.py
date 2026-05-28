@@ -12,7 +12,7 @@ For users who just want to emit events from their own agent code:
 That's it. No file copying, no config, no setup beyond ``pip install reverie-obs``.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from reverie_obs.client import ReverieClient
 
