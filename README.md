@@ -6,7 +6,7 @@
 
 *Chrome DevTools for AI agents. OpenTelemetry for agent cognition.*
 
-[![tests](https://img.shields.io/badge/tests-409%20green-22c55e.svg)](#testing)
+[![tests](https://img.shields.io/badge/tests-431%20green-22c55e.svg)](#testing)
 [![python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org)
 [![node](https://img.shields.io/badge/node-20%2B-339933.svg)](https://nodejs.org)
 [![license](https://img.shields.io/badge/license-MIT-purple.svg)](LICENSE)
@@ -125,7 +125,7 @@ Optional but recommended:
 **1. Single binary (simplest, end-user)**
 
 Download the pre-built binary for your OS from the
-[releases page](https://github.com/your-org/reverie/releases):
+[releases page](https://github.com/harshtripathi272/Reverie/releases):
 
 ```bash
 # macOS/Linux
@@ -153,8 +153,8 @@ if you'd rather install into your project's venv.
 **3. From source (for development)**
 
 ```bash
-git clone https://github.com/<your-org>/reverie.git
-cd reverie
+git clone https://github.com/harshtripathi272/Reverie.git
+cd Reverie
 make install
 ```
 
@@ -245,6 +245,7 @@ see events stream into the dashboard in real time.
 
 Other examples that ship with the repo:
 
+**Synthetic (no API key needed):**
 - **`examples/basic_agent.py`** — minimal happy path, ~10 events.
 - **`examples/complex_agent.py`** — multi-subagent run with intentional
   loops and a failing reviewer. Triggers the `loop` and `explosion`
@@ -253,6 +254,17 @@ Other examples that ship with the repo:
   path. Pair with `reverie replay --jump-failure`.
 - **`examples/paired_runs.py`** — emits two runs (one success, one
   failure) of the same goal. Pair with `reverie compare`.
+
+**Real-shape examples (production-like, in `examples/real/`):**
+- **`nvidia_streaming_agent.py`** — NVIDIA NIM with streaming + reasoning capture.
+- **`research_pipeline.py`** — multi-step research agent with realistic failures.
+- **`multi_agent_planner.py`** — planner + researcher + writer subagents (best 3D visual).
+- **`rag_qa_agent.py`** — RAG with poison-memory anomaly detection.
+- **`code_review_agent.py`** — static analysis + LLM reviewer with retry loops.
+- **`demo_recording.py`** — designed for demo videos, ~50 orbs across 3 clusters.
+
+See [`examples/real/README.md`](./examples/real/README.md) for setup and
+running instructions.
 
 ### Open it in 3D
 
@@ -720,6 +732,47 @@ dependencies beyond `httpx`.
 
 ### Option 4: Direct HTTP API (any framework, any language)
 
+For framework-agnostic Python users, the easiest path is the
+`ReverieClient` class shipped in `reverie-obs`:
+
+```python
+pip install reverie-obs
+```
+
+```python
+from reverie_obs import ReverieClient
+
+rev = ReverieClient(agent_id="my-gemini-bot", runtime="gemini")
+rev.start_run(goal="Research AI safety")
+
+goal_id = rev.goal("Find recent papers")
+
+tool_id = rev.tool_called(
+    "gemini.generate",
+    input={"prompt": "Find papers on AI alignment"},
+    parent_id=goal_id,
+)
+# ... your actual Gemini call here ...
+rev.tool_returned(
+    "gemini.generate",
+    output={"text": response_text},
+    token_cost=usage.total_tokens,
+    parent_id=goal_id,
+)
+
+rev.complete_run()
+```
+
+Works with **any** framework — Gemini, Anthropic, OpenAI direct, custom
+LLM wrappers, LangGraph, CrewAI, AutoGen — anything where you don't have
+a dedicated Reverie adapter. The client is non-blocking and never raises;
+if the backend is down events are silently dropped.
+
+If you'd rather use raw HTTP (e.g. from a non-Python language), the
+endpoints are documented below.
+
+#### Raw HTTP (any language)
+
 If you're using **LangGraph, CrewAI, AutoGen, a custom framework, or
 even a non-Python agent**, you can emit events directly to the Reverie
 backend's HTTP API. This works from any language that can make HTTP
@@ -801,10 +854,10 @@ curl -X POST http://127.0.0.1:8000/events \
 | `validation.passed` | A check succeeded |
 | `validation.failed` | A check failed |
 | `reflection.generated` | Agent reflects on its own progress |
+| `reasoning.generated` | The model's chain-of-thought captured separately from the answer |
 | `subagent.spawned` | Agent delegates to a helper agent |
 | `subagent.completed` | Helper agent finished its work |
-| `planning.started` | Agent begins planning a strategy |
-| `planning.completed` | Plan is finalized |
+| `planner.updated` | Planning phase reached a new step (use payload to mark `started` / `completed`) |
 | `context.overflow` | Context window hit its limit |
 | `context.compressed` | Context was summarized to save space |
 | `decision.made` | Agent chose between alternatives |
@@ -845,11 +898,11 @@ explicitly request an AI summary (which calls the Claude API).
 | Framework | Status |
 |---|---|
 | **OpenAI Agents SDK** | Fully supported (auto-inject via `reverie run`) |
-| **LangGraph** | On the roadmap | instructions 
+| **LangGraph** | On the roadmap |
 | **CrewAI** | On the roadmap |
 | **AutoGen** | On the roadmap |
 | **MCP** | On the roadmap |
-| **Custom / other** | Use the HTTP API directly (Option 4 above) |
+| **Custom / other** | Use `reverie_obs.ReverieClient` (Option 2) or the HTTP API directly (Option 4) |
 
 The schema is **frozen at v1.0** — no removals, no renames, no type
 changes. Only additive changes. Build against it with confidence; it
@@ -1026,13 +1079,13 @@ schema is the platform's foundation for ecosystem growth.
 | **Salience scorer** | Per-node 0.0–1.0 importance score; nodes < 0.10 hidden by default. |
 | **AI summary service** | Optional Claude-backed natural-language explanations. DB-cached so the same region never gets summarized twice. |
 | **Comparative debugger** | Needleman-Wunsch alignment over event semantics, structured diff across all seven SRS dimensions, fault tree, AI narrative. |
-| **CLI** | 12 subcommands. Most ship `--json` for scripting. |
+| **CLI** | 14 subcommands. Most ship `--json` for scripting. |
 | **3D renderer** | Next.js 15 + React Three Fiber 9. Custom Fresnel-rim shaders, ACES filmic tone mapping, selective bloom on emissive surfaces, damped orbit camera, drag-to-move orbs, glassmorphic HUD. |
 
 ## Project layout
 
 ```
-reverie/
+Reverie/
 ├── packages/
 │   ├── schema/           — TypeScript types + Zod (canonical wire format)
 │   ├── schema-py/        — Pydantic v2 (parallel source of truth for Python)
@@ -1041,9 +1094,17 @@ reverie/
 │   ├── api/              — FastAPI backend + SQLite event log
 │   └── web/              — Next.js 15 + R3F 3D explorer
 ├── cli/                  — `reverie` CLI
-├── examples/             — reference agents (basic, complex, failing, paired)
-├── scripts/              — smoke tests
-├── ABOUT.md              — product vision (long-form)
+├── meta/                 — `reverie-obs` meta-package + universal ReverieClient
+├── examples/
+│   ├── basic_agent.py    — synthetic reference agents
+│   ├── complex_agent.py
+│   ├── failing_agent.py
+│   ├── paired_runs.py
+│   └── real/             — production-shape examples (NVIDIA NIM, RAG, multi-agent)
+├── scripts/              — bundling, binary builds, smoke tests
+├── docs/                 — INTEGRATION.md + SHIPPING_CHECKLIST.md
+├── sc/                   — README screenshots
+├── ABOUT.md              — product vision (long-form, non-technical)
 ├── SRS.md                — full architecture + 8-layer spec
 ├── CONTRIBUTING.md       — how to contribute
 ├── CODE_OF_CONDUCT.md    — community standards
@@ -1053,9 +1114,10 @@ reverie/
 
 ## Testing
 
-The project ships **400+ tests** covering schema, adapter, backend,
+The project ships **430+ tests** covering schema, adapter, backend,
 snapshot engine, graph intelligence, anomaly detectors, salience
-scorer, AI client, comparative debugger, and the CLI.
+scorer, AI client, comparative debugger, annotations + guidance,
+the CLI, and the bundled-web-app static mount.
 
 ```bash
 make test          # everything (Python + TypeScript)
@@ -1080,6 +1142,20 @@ bump in both the Python and TypeScript implementations.
 Found a security issue? See [`SECURITY.md`](./SECURITY.md) for
 responsible-disclosure instructions.
 
+## Roadmap
+
+The 21-week build plan in [`SRS.md`](./SRS.md) is fully shipped. A live
+roadmap of what's next lives in
+[`docs/SHIPPING_CHECKLIST.md`](./docs/SHIPPING_CHECKLIST.md). Highlights:
+
+- **More adapters** — LangGraph, CrewAI, AutoGen, MCP. The universal
+  `ReverieClient` covers most needs but native adapters are nicer.
+- **Live WebSocket updates in 3D** — currently the explorer fetches once;
+  next iteration streams events as they arrive.
+- **Postgres backend option** — for team usage past one machine.
+- **Replay scrubber in the 3D view** — drag a timeline to roll the run
+  forward/backward (the snapshot engine already supports it).
+- **Auth + redaction helpers** — for production deployments.
 
 ## License
 
