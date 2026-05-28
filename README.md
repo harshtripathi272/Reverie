@@ -13,6 +13,24 @@
 
 </div>
 
+<div align="center">
+
+### The 3D cognitive explorer
+
+<img src="sc/graph.png" alt="Reverie 3D orb world — each orb is a cognitive event, connections show causality" width="800" />
+
+*Every orb is a thought. Every connection is a causal link. Orbit, zoom, drag, click.*
+
+---
+
+### Click any orb to inspect the full event
+
+<img src="sc/details.png" alt="Reverie detail panel — full event payload with URLs, queries, token costs" width="800" />
+
+*Full payload: tool name, input args, output, URLs (clickable), token cost, latency. Annotate with Avoid / Focus / Done to steer the next run.*
+
+</div>
+
 ---
 
 ## Table of contents
